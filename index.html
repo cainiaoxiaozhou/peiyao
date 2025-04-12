@@ -466,10 +466,12 @@
             <div class="card-header">
                 <div class="card-title">
                     <i>🔐</i> 用户认证
+                    <i id="usernames"></i>
                 </div>
+
             </div>
 
-    
+
 
             <div class="form-grid">
                 <div class="form-group">
@@ -604,7 +606,7 @@
                     errorMsg.textContent = "请输入用户名和密码！";
                     errorMsg.style.display = "block";
                     return;
-                }  else{
+                } else {
                     errorMsg.style.display = "none";
                 }
 
@@ -636,25 +638,56 @@
                     // 提取隐藏字段的值
                     const authToken = doc.getElementById("Admin_Center_SSO_Authorization")?.value;
                     const domain = doc.getElementById("domain")?.value;
-
                     if (authToken) {
-                        // 显示Token
-                        tokenValue.textContent = `Token: ${authToken}`;
-                        resultDiv.style.display = "block";
+                        // 创建一个函数来请求员工信息接口
+                        async function fetchEmployeeInfo() {
+                            const url = 'https://bid.delong-grp.com/api/bab/employee/info';
 
+                            try {
+                                const response = await fetch(url, {
+                                    method: 'GET', // 根据实际情况可能是 POST 或其他方法
+                                    headers: {
+                                        'Admin_Center_SSO_Authorization': authToken,
+                                        'Content-Type': 'application/json', // 根据需要添加其他头
+                                    },
+                                    // 如果有请求体，可以在这里添加
+                                    // body: JSON.stringify({...}),
+                                });
+                                if (!response.ok) {
+                                    throw new Error(`HTTP error! status: ${response.status}`);
+                                }
+                                const data = await response.json();
+                                // 在这里处理返回的员工信息数据
+                                return data;
+                            } catch (error) {
+                                // 在这里处理错误
+                                throw error;
+                            }
+                        }
+                        // 调用函数
+                        fetchEmployeeInfo()
+                            .then(data => {
+                                // 处理成功返回的数据
+                                document.getElementById('usernames').innerHTML = ': ' + data.data.employeeInfo.name;
+                            })
+                            .catch(error => {
+                                // 处理错误
+                            });
+                        // 显示Token
+                        tokenValue.textContent = authToken;
+                        document.getElementById('secretNey').value = authToken;
+                        resultDiv.style.display = "block";
                         // 存储到本地
                         localStorage.setItem("sso_token", authToken);
-
                         // 如果需要设置cookie
                         document.cookie = `Admin_Center_SSO_Authorization=${authToken}; path=/; domain=${domain}`;
                     } else {
-                             const errorMsg = document.getElementById("errorMsg");
-                             errorMsg.textContent = "请检查密码是否错误";
-                             errorMsg.style.display = "block";
+                        const errorMsg = document.getElementById("errorMsg");
+                        errorMsg.textContent = "请检查密码是否错误";
+                        errorMsg.style.display = "block";
                     }
 
                 } catch (error) {
-                    console.error("登录失败:", error);
                     errorMsg.textContent = `登录失败: ${error.message}`;
                 } finally {
                     this.textContent = "登录并获取Token";
@@ -668,7 +701,6 @@
         let totalItems = 0;
         // 每页显示数量
         let itemsPerPage = 10;
-
         // 初始化页面
         document.addEventListener('DOMContentLoaded', function () {
             document.getElementById('limit').value = itemsPerPage;
@@ -694,11 +726,10 @@
             const secretNey = document.getElementById('secretNey').value;
             itemsPerPage = parseInt(document.getElementById('limit').value);
             if (secretNey == '') {
-                  alert("请输入Token")
-                    // errorMsg.style.display = "block";
-                    return;
-                }
-        
+                alert("请输入Token")
+                // errorMsg.style.display = "block";
+                return;
+            }
             // 显示加载中
             document.getElementById('loading').style.display = 'block';
             document.getElementById('error').textContent = '';
@@ -731,7 +762,6 @@
                     populateTable(data.data.data.list || []);
                 })
                 .catch(error => {
-                    console.error('获取数据失败:', error);
                     document.getElementById('error').textContent = '获取数据失败: ' + error.message;
                 })
                 .finally(() => {
@@ -812,22 +842,7 @@
             }
         });
 
-        // 填充表格数据
-//         function populateTable(items) {
-//     const tableBody = document.getElementById('tableBody');
-//     tableBody.innerHTML = '';
-//     items.forEach(item => {
-//         console.log(item.picUri);
-//         const row = document.createElement('tr');
-//         row.innerHTML = `
-//             <td>${item.eventTime ? item.eventTime.slice(0, 16) : ''}</td>
-//             <td>${item.personName || ''}</td>
-//             <td>${item.picUri ? `<img src="https://ics.delong-grp.com/${item.picUri}" alt="图片" style="max-width: 200px; max-height: 100px;">` : '无图片'}</td>
-//             <td>${item.devName || ''}</td>
-//         `;
-//         tableBody.appendChild(row);
-//     });
-// }
+
     </script>
 </body>
 
