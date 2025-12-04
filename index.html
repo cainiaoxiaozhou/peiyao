@@ -3,98 +3,56 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>3D Particle Magic Hand Control</title>
-    <!-- 引入 MediaPipe 样式和库 -->
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <title>摄像头调试工具</title>
+    <!-- 引入 MediaPipe 库 -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    
     <style>
         body {
             margin: 0;
-            overflow: hidden;
-            background-color: #050505;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            color: white;
-        }
-        canvas {
-            display: block;
-        }
-        #ui-container {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            width: auto;
-            text-align: left;
-            pointer-events: none;
-            z-index: 10;
-        }
-        h1 {
-            font-size: 1.8rem;
-            margin: 0;
-            background: linear-gradient(90deg, #00ffff, #ff00ff);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            font-weight: 800;
-            letter-spacing: 1px;
-        }
-        .mode-display {
-            font-size: 2.5rem;
-            font-weight: bold;
-            margin-top: 10px;
-            text-shadow: 0 0 15px rgba(255,255,255,0.5);
-            transition: color 0.3s;
-        }
-        .instruction-list {
-            margin-top: 15px;
-            font-size: 0.9rem;
-            color: rgba(255,255,255,0.6);
-            background: rgba(0,0,0,0.5);
-            padding: 15px;
-            border-radius: 10px;
-            border-left: 3px solid cyan;
-        }
-        .instruction-item {
-            margin-bottom: 5px;
             display: flex;
+            justify-content: center;
             align-items: center;
+            min-height: 100vh;
+            background-color: #1a1a1a;
+            color: white;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
-        .key {
-            font-weight: bold;
-            color: #fff;
-            margin-right: 8px;
-            width: 30px;
-        }
-        /* 摄像头预览窗口 */
+        
         #camera-container {
-            position: absolute;
-            bottom: 20px;
-            right: 20px;
-            width: 240px;
-            height: 180px;
+            position: relative;
+            width: 90%; 
+            max-width: 640px; 
+            aspect-ratio: 4 / 3;
             border-radius: 12px;
             overflow: hidden;
-            border: 2px solid rgba(255, 255, 255, 0.1);
-            z-index: 20;
+            border: 5px solid #00FFFF;
             background: #000;
-            transform: scaleX(-1);
-            box-shadow: 0 0 20px rgba(0,0,0,0.8);
+            box-shadow: 0 0 30px rgba(0, 255, 255, 0.5);
+            /* 翻转以模拟自拍模式 */
+            transform: scaleX(-1); 
         }
-        /* 视频元素现在强制可见，并占满容器 */
+        
+        /* 视频元素用于 MediaPipe 读取帧，保持隐藏 */
         #input_video {
             width: 100%;
             height: 100%;
             object-fit: cover;
             display: block; 
             position: absolute;
-            opacity: 0; /* 保持隐藏，只用于MediaPipe处理 */
+            opacity: 0; 
         }
+
+        /* Canvas 用于绘制视频帧和手势骨骼，它应该显示画面 */
         #output_canvas {
             width: 100%;
             height: 100%;
             display: block;
             position: relative;
         }
+
         #loading {
             position: absolute;
             top: 50%;
@@ -110,455 +68,163 @@
             border-radius: 10px;
             max-width: 80%;
             text-align: center;
+            border: 1px solid rgba(0, 255, 255, 0.3);
         }
         .error-message {
             color: #FF4500;
             text-shadow: 0 0 10px #FF4500;
         }
+        .debug-status {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 101;
+            padding: 5px 15px;
+            background: rgba(0,0,0,0.7);
+            border-radius: 8px;
+            font-size: 0.9rem;
+        }
     </style>
 </head>
 <body>
 
-    <div id="loading">
-        ✨ 正在启动魔法引擎... 
-        <br>
-        <small>（正尝试直接获取摄像头视频流，兼容性更强）</small>
-    </div>
-
-    <div id="ui-container">
-        <h1>粒子力场 V2.0</h1>
-        <div id="current-mode" class="mode-display">等待手势...</div>
-        
-        <div class="instruction-list">
-            <div class="instruction-item"><span class="key">☝️</span> 1指 · 聚能核心 (金色)</div>
-            <div class="instruction-item"><span class="key">✌️</span> 2指 · 膨胀爆发 (红色)</div>
-            <div class="instruction-item"><span class="key">🤟</span> 3指 · 时空波浪 (紫色)</div>
-            <div class="instruction-item"><span class="key">👌</span> 捏合 · 旋转控制 (拖拽)</div>
-        </div>
-    </div>
-
-    <!-- 摄像头预览区域 -->
     <div id="camera-container">
-        <!-- MediaPipe 使用这个 video 元素来读取帧 -->
-        <!-- 关键更新：添加 muted 属性以提高移动端自动播放的成功率 -->
+        <!-- 视频元素：playsinline muted 是移动端启动的关键 -->
         <video id="input_video" playsinline muted></video>
-        <!-- Canvas 元素用于绘制手势检测结果 -->
+        <!-- Canvas 元素：用于绘制视频画面和骨骼 -->
         <canvas id="output_canvas"></canvas>
     </div>
 
-    <!-- 引入 Three.js -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <div id="loading">
+        🎥 正在请求摄像头权限... 
+        <br>
+        <small>（请允许访问，并等待视频流启动）</small>
+    </div>
+    
+    <div id="debug-status" class="debug-status" style="display:none;">
+        状态：<span id="video-state">初始化</span>
+    </div>
 
     <script>
-        // --- Three.js 变量 ---
-        let scene, camera, renderer;
-        let particles;
-        let originalPositions = []; 
-        let targetRotationX = 0;
-        let targetRotationY = 0;
-        let targetRotationOnMouseDownX = 0;
-        let targetRotationOnMouseDownY = 0;
-        let mouseX = 0;
-        let mouseY = 0;
-        let mouseXOnMouseDown = 0;
-        let mouseYOnMouseDown = 0;
-        let windowHalfX = window.innerWidth / 2;
-        let windowHalfY = window.innerHeight / 2;
-        
-        // 状态变量
-        let isDragging = false;
-        let finalRotationY = 0;
-        let finalRotationX = 0;
-        let time = 0;
-
-        // --- 手势控制变量 ---
-        let isPinching = false;
-        let fingerCount = 0; // 手指数量
-
-        // 颜色目标 (RGB)
-        let currentColor = { r: 0.2, g: 0.8, b: 1.0 }; 
-        let targetColor = { r: 0.2, g: 0.8, b: 1.0 };
-        
-        // 粒子形态参数
-        let expansionFactor = 1.0;
-        let targetExpansion = 1.0;
-        let waveIntensity = 0;
-        let targetWave = 0;
-        let rotationSpeed = 0.001;
-        let targetRotationSpeed = 0.001;
-
-        initThreeJS();
-        animate();
-        initMediaPipe();
-
         // -----------------------------------------------------------
-        // Three.js 初始化与逻辑
-        // -----------------------------------------------------------
-        function initThreeJS() {
-            scene = new THREE.Scene();
-            scene.fog = new THREE.FogExp2(0x000000, 0.001); 
-
-            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 1, 3000);
-            camera.position.z = 1000;
-
-            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
-            renderer.setPixelRatio(window.devicePixelRatio);
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            document.body.appendChild(renderer.domElement);
-
-            // 材质
-            const particleMaterial = new THREE.PointsMaterial({
-                color: 0xffffff,
-                size: 12,
-                map: getSprite(),
-                blending: THREE.AdditiveBlending,
-                depthTest: false,
-                transparent: true,
-                opacity: 0.9,
-                vertexColors: true
-            });
-
-            const geometry = new THREE.BufferGeometry();
-            const particleCount = 2500;
-            const positions = [];
-            const colors = [];
-            const colorObj = new THREE.Color();
-
-            for (let i = 0; i < particleCount; i++) {
-                const radius = 600 + Math.random() * 50;
-                const theta = Math.random() * Math.PI * 2;
-                const phi = Math.acos(2 * Math.random() - 1);
-                
-                const x = radius * Math.sin(phi) * Math.cos(theta);
-                const y = radius * Math.sin(phi) * Math.sin(theta);
-                const z = radius * Math.cos(phi);
-                
-                positions.push(x, y, z);
-                
-                originalPositions.push({x, y, z, radius, theta, phi});
-
-                colorObj.setHSL(0.6, 0.8, 0.5); 
-                colors.push(colorObj.r, colorObj.g, colorObj.b);
-            }
-
-            geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-            geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-
-            particles = new THREE.Points(geometry, particleMaterial);
-            scene.add(particles);
-
-            // 鼠标兼容
-            document.addEventListener('mousedown', onDocumentMouseDown, false);
-            window.addEventListener('resize', onWindowResize, false);
-        }
-
-        function getSprite() {
-            const canvas = document.createElement('canvas');
-            canvas.width = 32;
-            canvas.height = 32;
-            const context = canvas.getContext('2d');
-            const gradient = context.createRadialGradient(16, 16, 0, 16, 16, 16);
-            gradient.addColorStop(0, 'rgba(255,255,255,1)');
-            gradient.addColorStop(0.2, 'rgba(240,240,255,0.6)'); 
-            gradient.addColorStop(0.5, 'rgba(240,240,255,0.1)');
-            gradient.addColorStop(1, 'rgba(0,0,0,0)');
-            context.fillStyle = gradient;
-            context.fillRect(0, 0, 32, 32);
-            const texture = new THREE.Texture(canvas);
-            texture.needsUpdate = true;
-            return texture;
-        }
-
-        function onWindowResize() {
-            windowHalfX = window.innerWidth / 2;
-            windowHalfY = window.innerHeight / 2;
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        }
-
-        // 鼠标拖拽逻辑
-        function onDocumentMouseDown(event) {
-            if(isPinching) return; 
-            event.preventDefault();
-            isDragging = true;
-            document.addEventListener('mousemove', onDocumentMouseMove, false);
-            document.addEventListener('mouseup', onDocumentMouseUp, false);
-            mouseXOnMouseDown = event.clientX - windowHalfX;
-            mouseYOnMouseDown = event.clientY - windowHalfY;
-            targetRotationOnMouseDownY = targetRotationY;
-            targetRotationOnMouseDownX = targetRotationX;
-        }
-        function onDocumentMouseMove(event) {
-            mouseX = event.clientX - windowHalfX;
-            mouseY = event.clientY - windowHalfY;
-            targetRotationY = targetRotationOnMouseDownY + (mouseX - mouseXOnMouseDown) * 0.005;
-            targetRotationX = targetRotationOnMouseDownX + (mouseY - mouseYOnMouseDown) * 0.005;
-        }
-        function onDocumentMouseUp() {
-            isDragging = false;
-            document.removeEventListener('mousemove', onDocumentMouseMove);
-            document.removeEventListener('mouseup', onDocumentMouseUp);
-        }
-
-        // -----------------------------------------------------------
-        // 核心动画循环
-        // -----------------------------------------------------------
-        function animate() {
-            requestAnimationFrame(animate);
-            time += 0.02;
-
-            // 1. 插值过渡动画 
-            currentColor.r += (targetColor.r - currentColor.r) * 0.05;
-            currentColor.g += (targetColor.g - currentColor.g) * 0.05;
-            currentColor.b += (targetColor.b - currentColor.b) * 0.05;
-
-            // 形态参数平滑过渡
-            expansionFactor += (targetExpansion - expansionFactor) * 0.05;
-            waveIntensity += (targetWave - waveIntensity) * 0.05;
-            rotationSpeed += (targetRotationSpeed - rotationSpeed) * 0.05;
-
-            // 旋转惯性
-            finalRotationY += (targetRotationY - finalRotationY) * 0.05;
-            finalRotationX += (targetRotationX - finalRotationX) * 0.05;
-
-            // 2. 更新粒子位置和颜色
-            if (particles) {
-                // 自动旋转
-                if (!isDragging && !isPinching) {
-                     targetRotationY += rotationSpeed; 
-                }
-                
-                particles.rotation.y = finalRotationY;
-                particles.rotation.x = finalRotationX;
-
-                const positions = particles.geometry.attributes.position.array;
-                const colors = particles.geometry.attributes.color.array;
-
-                for (let i = 0; i < originalPositions.length; i++) {
-                    const orig = originalPositions[i];
-                    const idx = i * 3;
-
-                    // --- 动态变形逻辑 ---
-                    
-                    // 基础半径 + 膨胀系数
-                    let r = orig.radius * expansionFactor;
-                    
-                    // 波浪效果 
-                    let waveY = 0;
-
-                    if (waveIntensity > 0.01) {
-                         const wave = Math.sin(orig.y * 0.01 + time * 2) * 100 * waveIntensity;
-                         r += wave; 
-                         waveY = wave; 
-                    }
-
-                    // 重新计算坐标 (球坐标 -> 直角坐标)
-                    let newX = r * Math.sin(orig.phi) * Math.cos(orig.theta);
-                    let newY = r * Math.sin(orig.phi) * Math.sin(orig.theta) + waveY;
-                    let newZ = r * Math.cos(orig.phi);
-
-                    // 赋值位置
-                    positions[idx] = newX;
-                    positions[idx + 1] = newY;
-                    positions[idx + 2] = newZ;
-
-                    // --- 动态颜色逻辑 ---
-                    const brightnessVar = (Math.sin(i + time) + 1) * 0.1; 
-                    
-                    colors[idx] = Math.min(1, currentColor.r + brightnessVar);
-                    colors[idx + 1] = Math.min(1, currentColor.g + brightnessVar);
-                    colors[idx + 2] = Math.min(1, currentColor.b + brightnessVar);
-                }
-
-                particles.geometry.attributes.position.needsUpdate = true;
-                particles.geometry.attributes.color.needsUpdate = true;
-            }
-
-            renderer.render(scene, camera);
-        }
-
-        // -----------------------------------------------------------
-        // MediaPipe Hands 逻辑 - 采用原生 API 优化移动端兼容性
+        // MediaPipe Hands 逻辑 - 纯摄像头测试
         // -----------------------------------------------------------
         function initMediaPipe() {
             const videoElement = document.getElementById('input_video');
             const canvasElement = document.getElementById('output_canvas');
-            const modeText = document.getElementById('current-mode');
+            const canvasCtx = canvasElement.getContext('2d');
             const loadingElement = document.getElementById('loading');
-            
+            const statusElement = document.getElementById('video-state');
+            const debugStatusContainer = document.getElementById('debug-status');
+
+            // 1. 初始化 MediaPipe
             const hands = new Hands({locateFile: (file) => {
                 return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
             }});
 
             hands.setOptions({
                 maxNumHands: 1,
-                modelComplexity: 1,
-                minDetectionConfidence: 0.6,
-                minTrackingConfidence: 0.6
+                modelComplexity: 0, // 降低复杂度以加快加载速度
+                minDetectionConfidence: 0.5,
+                minTrackingConfidence: 0.5
             });
 
             hands.onResults(onResults);
-
-            // ** 核心改动：直接使用 getUserMedia **
+            
+            // 2. 摄像头启动逻辑
             async function setupCamera() {
+                debugStatusContainer.style.display = 'block';
+                statusElement.textContent = '请求权限中...';
                 try {
-                    // 尝试获取视频流，移动端优先使用前置摄像头 (user)
+                    // 获取视频流，设置理想的分辨率
                     const stream = await navigator.mediaDevices.getUserMedia({ 
                         video: { 
                             facingMode: "user", 
-                            width: { ideal: 320 },
-                            height: { ideal: 240 }
+                            width: { ideal: 640 },
+                            height: { ideal: 480 }
                         } 
                     });
                     
                     videoElement.srcObject = stream;
+                    statusElement.textContent = '视频流已获取。等待元数据加载...';
 
-                    // 确保视频开始播放，移动端通常需要 onloadedmetadata 或 play() 才能启动
+                    // 视频元数据加载完成后
                     videoElement.onloadedmetadata = () => {
-                        // 关键更新1: 显式设置 Canvas 的内部分辨率，防止绘制问题
-                        const videoWidth = videoElement.videoWidth || 320;
-                        const videoHeight = videoElement.videoHeight || 240;
+                        const videoWidth = videoElement.videoWidth;
+                        const videoHeight = videoElement.videoHeight;
                         
+                        // 强制设置 Canvas 内部尺寸与视频流尺寸一致
                         canvasElement.width = videoWidth;
                         canvasElement.height = videoHeight;
                         
-                        // 关键更新2: 使用 play() Promise 确保视频流启动成功
+                        statusElement.textContent = `视频尺寸: ${videoWidth}x${videoHeight}。尝试播放...`;
+                        
+                        // 关键步骤：使用 play() Promise 确保视频流在移动端启动
                         videoElement.play().then(() => {
                             loadingElement.style.display = 'none';
-                            console.log("Camera stream started successfully and video is playing.");
+                            statusElement.textContent = '✅ 摄像头画面已启动！';
+                            console.log("Camera stream started and video is playing.");
                             // 启动 MediaPipe 的帧处理循环
                             requestAnimationFrame(sendToMediaPipe);
                         }).catch(e => {
                             const errorMessage = `❌ 视频播放失败: ${e.message}。`;
-                            loadingElement.innerHTML = `<span class="error-message">${errorMessage}</span><br>请确保浏览器允许视频自动播放（通常需要静音和用户交互）。`;
+                            loadingElement.innerHTML = `<span class="error-message">${errorMessage}</span><br>请在 URL 栏手动点击播放按钮，或尝试在屏幕上点击一次。`;
+                            statusElement.textContent = '❌ 播放失败';
                             console.error("Video play failed:", e);
                         });
                     };
 
                 } catch (error) {
-                    const errorMessage = `❌ 摄像头启动失败 (${error.name} - ${error.message || '未知错误'})。`;
-                    loadingElement.innerHTML = `<span class="error-message">${errorMessage}</span><br>请检查：<br>1. 浏览器权限。<br>2. 摄像头是否被其他程序占用。`;
+                    const errorMessage = `❌ 摄像头启动失败 (${error.name})。`;
+                    loadingElement.innerHTML = `<span class="error-message">${errorMessage}</span><br>错误原因：${error.message || '未知错误'}。<br>请检查权限或是否被占用。`;
+                    statusElement.textContent = '❌ 启动失败';
                     console.error("Camera startup failed:", error);
                 }
             }
 
-            // 自定义帧处理循环，手动将视频帧发送给 MediaPipe
+            // 3. 自定义帧处理循环
             async function sendToMediaPipe() {
-                // 确保视频已经准备好渲染（readyState >= 2 意味着有足够的帧数据）
+                // 确保视频已经准备好渲染（readyState >= 2 表示有帧数据）
                 if (videoElement.readyState >= 2) {
                     await hands.send({image: videoElement});
                 }
+                // 使用 requestAnimationFrame 保证流畅性
                 requestAnimationFrame(sendToMediaPipe);
             }
             
+            // 启动
             setupCamera();
-            // ---------------------------------
 
+            // 4. MediaPipe 结果处理
             function onResults(results) {
-                // 绘制
+                // 清空 Canvas
                 canvasCtx.save();
-                // 使用 Canvas 实际设置的分辨率进行清空和绘制
                 canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-                canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
-                
-                if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-                    const landmarks = results.multiHandLandmarks[0];
-                    
-                    // 绘制骨骼
-                    drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: '#00FFFF', lineWidth: 2});
-                    drawLandmarks(canvasCtx, landmarks, {color: '#FF00FF', lineWidth: 1});
 
-                    // 1. 检测捏合 (Pinch) - 优先级最高
-                    const indexTip = landmarks[8];
-                    const thumbTip = landmarks[4];
-                    const middleMCP = landmarks[9];
-                    
-                    const pinchDist = Math.hypot(indexTip.x - thumbTip.x, indexTip.y - thumbTip.y);
-                    const currentHandX = (1 - middleMCP.x) * window.innerWidth;
-                    const currentHandY = middleMCP.y * window.innerHeight;
-
-                    if (pinchDist < 0.05) {
-                        handlePinchMode(currentHandX, currentHandY);
-                    } else {
-                        isPinching = false;
-                        const count = countFingers(landmarks);
-                        updateStateByFingerCount(count);
-                    }
+                // ** 关键步骤：将视频帧绘制到 Canvas 上 **
+                // 即使没有检测到手，也应该绘制这个图像
+                if (results.image) {
+                    canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+                    statusElement.textContent = '✅ 画面绘制正常 (等待手势)';
                 } else {
-                    // 没检测到手 - 恢复默认
-                    resetToIdle();
+                    statusElement.textContent = '⚠️ 无法获取 MediaPipe 图像数据';
+                }
+
+                // 绘制手势骨骼（可选，用于确认 MediaPipe 运行正常）
+                if (results.multiHandLandmarks) {
+                    for (const landmarks of results.multiHandLandmarks) {
+                        drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: '#00FFFF', lineWidth: 2});
+                        drawLandmarks(canvasCtx, landmarks, {color: '#FF00FF', lineWidth: 1});
+                        statusElement.textContent = '✅ 画面绘制正常 (已检测到手势)';
+                    }
                 }
                 canvasCtx.restore();
             }
-            
-            function countFingers(landmarks) {
-                let count = 0;
-                // 简单判定：指尖 y 坐标小于关节 y 坐标 (屏幕坐标系 y 向下增大)
-                if (landmarks[8].y < landmarks[6].y) count++;
-                if (landmarks[12].y < landmarks[10].y) count++;
-                if (landmarks[16].y < landmarks[14].y) count++;
-                if (landmarks[20].y < landmarks[18].y) count++;
-                
-                return count;
-            }
-
-            function handlePinchMode(x, y) {
-                if (!isPinching) {
-                    isPinching = true;
-                    mouseXOnMouseDown = x - windowHalfX;
-                    mouseYOnMouseDown = y - windowHalfY;
-                    targetRotationOnMouseDownY = targetRotationY;
-                    targetRotationOnMouseDownX = targetRotationX;
-                    
-                    modeText.innerText = "🌀 捏合旋转中";
-                    modeText.style.color = "#00FFFF";
-                } else {
-                    const dx = x - windowHalfX;
-                    const dy = y - windowHalfY;
-                    targetRotationY = targetRotationOnMouseDownY + (dx - mouseXOnMouseDown) * 0.008;
-                    targetRotationX = targetRotationOnMouseDownX + (dy - mouseYOnMouseDown) * 0.008;
-                }
-                setTargetParams(1.0, 0, 0.0, {r: 0.5, g: 0.9, b: 0.9}); 
-            }
-
-            function updateStateByFingerCount(count) {
-                if (count === 0 || count > 3) {
-                    resetToIdle();
-                    return;
-                }
-
-                if (count === 1) {
-                    modeText.innerText = "☝️ 聚能模式";
-                    modeText.style.color = "#FFD700"; 
-                    setTargetParams(0.6, 0, 0.02, {r: 1.0, g: 0.8, b: 0.1});
-                } 
-                else if (count === 2) {
-                    modeText.innerText = "✌️ 爆发模式";
-                    modeText.style.color = "#FF3333"; 
-                    setTargetParams(1.4, 0, 0.005, {r: 1.0, g: 0.2, b: 0.2});
-                } 
-                else if (count === 3) {
-                    modeText.innerText = "🤟 时空波浪";
-                    modeText.style.color = "#BF00FF"; 
-                    setTargetParams(1.1, 1.0, 0.002, {r: 0.7, g: 0.0, b: 1.0});
-                }
-            }
-
-            function resetToIdle() {
-                modeText.innerText = "等待手势...";
-                modeText.style.color = "#FFFFFF";
-                isPinching = false;
-                setTargetParams(1.0, 0, 0.001, {r: 0.2, g: 0.8, b: 1.0});
-            }
-
-            function setTargetParams(exp, wave, rotSpeed, col) {
-                targetExpansion = exp;
-                targetWave = wave;
-                targetRotationSpeed = rotSpeed;
-                targetColor = col;
-            }
         }
+
+        // 页面加载完成后启动 MediaPipe
+        window.onload = initMediaPipe;
     </script>
 </body>
 </html>
