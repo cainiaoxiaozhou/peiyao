@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>3D Particle Rotation with Hand Gestures</title>
+    <title>3D Particle Magic Hand Control</title>
     <!-- 引入 MediaPipe 样式和库 -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
@@ -23,54 +23,68 @@
         #ui-container {
             position: absolute;
             top: 20px;
-            left: 0;
-            width: 100%;
-            text-align: center;
+            left: 20px;
+            width: auto;
+            text-align: left;
             pointer-events: none;
             z-index: 10;
         }
         h1 {
-            font-size: 1.5rem;
+            font-size: 1.8rem;
             margin: 0;
-            text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
-            font-weight: 300;
-            letter-spacing: 2px;
+            background: linear-gradient(90deg, #00ffff, #ff00ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-weight: 800;
+            letter-spacing: 1px;
         }
-        .instruction {
-            background: rgba(255, 255, 255, 0.1);
-            padding: 8px 16px;
-            border-radius: 20px;
-            display: inline-block;
-            backdrop-filter: blur(5px);
-            margin-top: 10px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            transition: background 0.3s;
-        }
-        .instruction.active {
-            background: rgba(0, 255, 255, 0.3);
-            border-color: rgba(0, 255, 255, 0.6);
-            color: #fff;
+        .mode-display {
+            font-size: 2.5rem;
             font-weight: bold;
+            margin-top: 10px;
+            text-shadow: 0 0 15px rgba(255,255,255,0.5);
+            transition: color 0.3s;
+        }
+        .instruction-list {
+            margin-top: 15px;
+            font-size: 0.9rem;
+            color: rgba(255,255,255,0.6);
+            background: rgba(0,0,0,0.5);
+            padding: 15px;
+            border-radius: 10px;
+            border-left: 3px solid cyan;
+        }
+        .instruction-item {
+            margin-bottom: 5px;
+            display: flex;
+            align-items: center;
+        }
+        .key {
+            font-weight: bold;
+            color: #fff;
+            margin-right: 8px;
+            width: 30px;
         }
         /* 摄像头预览窗口 */
         #camera-container {
             position: absolute;
             bottom: 20px;
             right: 20px;
-            width: 200px;
-            height: 150px;
-            border-radius: 10px;
+            width: 240px;
+            height: 180px;
+            border-radius: 12px;
             overflow: hidden;
-            border: 2px solid rgba(255, 255, 255, 0.2);
+            border: 2px solid rgba(255, 255, 255, 0.1);
             z-index: 20;
             background: #000;
-            transform: scaleX(-1); /* 镜像显示，让操作更自然 */
+            transform: scaleX(-1);
+            box-shadow: 0 0 20px rgba(0,0,0,0.8);
         }
         #input_video {
             width: 100%;
             height: 100%;
             object-fit: cover;
-            display: none; /* 隐藏原始视频，只显示画了骨骼的 canvas */
+            display: none;
         }
         #output_canvas {
             width: 100%;
@@ -87,45 +101,26 @@
             text-shadow: 0 0 10px cyan;
             z-index: 100;
             display: block;
-        }
-        /* 手势状态指示器 */
-        #gesture-status {
-            position: absolute;
-            bottom: 180px;
-            right: 20px;
-            text-align: right;
-            font-size: 0.9rem;
-            color: #aaa;
-            pointer-events: none;
-        }
-        .status-dot {
-            display: inline-block;
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            background: #555;
-            margin-right: 5px;
-        }
-        .status-dot.active {
-            background: #0f0;
-            box-shadow: 0 0 5px #0f0;
+            background: rgba(0,0,0,0.8);
+            padding: 20px;
+            border-radius: 10px;
         }
     </style>
 </head>
 <body>
 
-    <div id="loading">正在启动摄像头与AI模型...</div>
+    <div id="loading">✨ 正在启动魔法引擎 (加载AI模型)...</div>
 
     <div id="ui-container">
-        <h1>粒子力场控制器</h1>
-        <div class="instruction" id="instruction-box">
-            <span>👌 食指拇指捏合</span> = 抓住并旋转
+        <h1>粒子力场 V2.0</h1>
+        <div id="current-mode" class="mode-display">等待手势...</div>
+        
+        <div class="instruction-list">
+            <div class="instruction-item"><span class="key">☝️</span> 1指 · 聚能核心 (金色)</div>
+            <div class="instruction-item"><span class="key">✌️</span> 2指 · 膨胀爆发 (红色)</div>
+            <div class="instruction-item"><span class="key">🤟</span> 3指 · 时空波浪 (紫色)</div>
+            <div class="instruction-item"><span class="key">👌</span> 捏合 · 旋转控制 (拖拽)</div>
         </div>
-    </div>
-
-    <div id="gesture-status">
-        <span class="status-dot" id="hand-detected-dot"></span> 检测到手部<br>
-        <span class="status-dot" id="pinch-detected-dot"></span> 捏合锁定
     </div>
 
     <!-- 摄像头预览区域 -->
@@ -141,6 +136,7 @@
         // --- Three.js 变量 ---
         let scene, camera, renderer;
         let particles;
+        let originalPositions = []; // 存储粒子原始位置，用于复原
         let targetRotationX = 0;
         let targetRotationY = 0;
         let targetRotationOnMouseDownX = 0;
@@ -152,48 +148,62 @@
         let windowHalfX = window.innerWidth / 2;
         let windowHalfY = window.innerHeight / 2;
         
+        // 状态变量
         let isDragging = false;
         let finalRotationY = 0;
         let finalRotationX = 0;
-        let hue = 0;
+        let time = 0;
 
         // --- 手势控制变量 ---
         let isPinching = false;
-        let previousPinchX = 0;
-        let previousPinchY = 0;
+        let fingerCount = 0; // 手指数量
+        let currentMode = 'IDLE'; // IDLE, ONE, TWO, THREE, PINCH
+
+        // 颜色目标 (RGB)
+        let currentColor = { r: 0.2, g: 0.8, b: 1.0 }; // 默认青色
+        let targetColor = { r: 0.2, g: 0.8, b: 1.0 };
+        
+        // 粒子形态参数
+        let expansionFactor = 1.0;
+        let targetExpansion = 1.0;
+        let waveIntensity = 0;
+        let targetWave = 0;
+        let rotationSpeed = 0.001;
+        let targetRotationSpeed = 0.001;
 
         initThreeJS();
         animate();
         initMediaPipe();
 
         // -----------------------------------------------------------
-        // Three.js 初始化与逻辑 (保持原有大部分逻辑)
+        // Three.js 初始化与逻辑
         // -----------------------------------------------------------
         function initThreeJS() {
             scene = new THREE.Scene();
-            scene.fog = new THREE.FogExp2(0x050505, 0.002);
+            scene.fog = new THREE.FogExp2(0x000000, 0.001); // 更黑的背景
 
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 1, 3000);
             camera.position.z = 1000;
 
-            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
             renderer.setPixelRatio(window.devicePixelRatio);
             renderer.setSize(window.innerWidth, window.innerHeight);
             document.body.appendChild(renderer.domElement);
 
+            // 材质
             const particleMaterial = new THREE.PointsMaterial({
                 color: 0xffffff,
-                size: 15,
+                size: 12,
                 map: getSprite(),
                 blending: THREE.AdditiveBlending,
                 depthTest: false,
                 transparent: true,
-                opacity: 0.8,
+                opacity: 0.9,
                 vertexColors: true
             });
 
             const geometry = new THREE.BufferGeometry();
-            const particleCount = 2000;
+            const particleCount = 2500;
             const positions = [];
             const colors = [];
             const colorObj = new THREE.Color();
@@ -202,11 +212,17 @@
                 const radius = 600 + Math.random() * 50;
                 const theta = Math.random() * Math.PI * 2;
                 const phi = Math.acos(2 * Math.random() - 1);
+                
                 const x = radius * Math.sin(phi) * Math.cos(theta);
                 const y = radius * Math.sin(phi) * Math.sin(theta);
                 const z = radius * Math.cos(phi);
+                
                 positions.push(x, y, z);
-                colorObj.setHSL(0.5 + Math.random() * 0.2, 0.8, 0.5);
+                
+                // 存储原始位置，方便变形计算
+                originalPositions.push({x, y, z, radius, theta, phi});
+
+                colorObj.setHSL(0.6, 0.8, 0.5); // 初始蓝色
                 colors.push(colorObj.r, colorObj.g, colorObj.b);
             }
 
@@ -216,7 +232,7 @@
             particles = new THREE.Points(geometry, particleMaterial);
             scene.add(particles);
 
-            // 保留鼠标事件作为备用控制
+            // 鼠标兼容
             document.addEventListener('mousedown', onDocumentMouseDown, false);
             window.addEventListener('resize', onWindowResize, false);
         }
@@ -228,8 +244,8 @@
             const context = canvas.getContext('2d');
             const gradient = context.createRadialGradient(16, 16, 0, 16, 16, 16);
             gradient.addColorStop(0, 'rgba(255,255,255,1)');
-            gradient.addColorStop(0.2, 'rgba(255,255,255,0.8)');
-            gradient.addColorStop(0.5, 'rgba(255,255,255,0.2)');
+            gradient.addColorStop(0.2, 'rgba(240,240,255,0.6)'); 
+            gradient.addColorStop(0.5, 'rgba(240,240,255,0.1)');
             gradient.addColorStop(1, 'rgba(0,0,0,0)');
             context.fillStyle = gradient;
             context.fillRect(0, 0, 32, 32);
@@ -246,11 +262,9 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
         }
 
-        // --- 鼠标回退兼容逻辑 ---
+        // 鼠标拖拽逻辑
         function onDocumentMouseDown(event) {
-            // 如果已经在用手势，忽略鼠标
             if(isPinching) return; 
-            
             event.preventDefault();
             isDragging = true;
             document.addEventListener('mousemove', onDocumentMouseMove, false);
@@ -272,40 +286,101 @@
             document.removeEventListener('mouseup', onDocumentMouseUp);
         }
 
+        // -----------------------------------------------------------
+        // 核心动画循环
+        // -----------------------------------------------------------
         function animate() {
             requestAnimationFrame(animate);
-            
-            // 惯性逻辑
+            time += 0.02;
+
+            // 1. 插值过渡动画 (让变化平滑，而不是瞬间跳变)
+            // 颜色平滑过渡
+            currentColor.r += (targetColor.r - currentColor.r) * 0.05;
+            currentColor.g += (targetColor.g - currentColor.g) * 0.05;
+            currentColor.b += (targetColor.b - currentColor.b) * 0.05;
+
+            // 形态参数平滑过渡
+            expansionFactor += (targetExpansion - expansionFactor) * 0.05;
+            waveIntensity += (targetWave - waveIntensity) * 0.05;
+            rotationSpeed += (targetRotationSpeed - rotationSpeed) * 0.05;
+
+            // 旋转惯性
             finalRotationY += (targetRotationY - finalRotationY) * 0.05;
             finalRotationX += (targetRotationX - finalRotationX) * 0.05;
 
+            // 2. 更新粒子位置和颜色
             if (particles) {
+                // 自动旋转
+                if (!isDragging && !isPinching) {
+                     targetRotationY += rotationSpeed; 
+                }
+                
                 particles.rotation.y = finalRotationY;
                 particles.rotation.x = finalRotationX;
 
-                const time = Date.now() * 0.001;
-                const scale = 1 + Math.sin(time) * 0.03;
-                particles.scale.set(scale, scale, scale);
+                const positions = particles.geometry.attributes.position.array;
+                const colors = particles.geometry.attributes.color.array;
 
-                if (!isDragging && !isPinching) {
-                     targetRotationY += 0.001; 
+                for (let i = 0; i < originalPositions.length; i++) {
+                    const orig = originalPositions[i];
+                    const idx = i * 3;
+
+                    // --- 动态变形逻辑 ---
+                    
+                    // 基础半径 + 膨胀系数
+                    let r = orig.radius * expansionFactor;
+                    
+                    // 波浪效果 (基于原始位置叠加正弦波)
+                    // 如果 waveIntensity > 0, 粒子会上下浮动并产生类似 DNA 的扭曲
+                    let waveX = 0;
+                    let waveY = 0;
+                    let waveZ = 0;
+
+                    if (waveIntensity > 0.01) {
+                         // 复杂的波浪噪音
+                         const wave = Math.sin(orig.y * 0.01 + time * 2) * 100 * waveIntensity;
+                         const twist = Math.cos(orig.x * 0.01 + time) * 50 * waveIntensity;
+                         r += wave; // 波浪影响半径
+                         waveY = wave; // 波浪影响高度
+                    }
+
+                    // 重新计算坐标 (球坐标 -> 直角坐标)
+                    // 1指模式下 expansionFactor < 1 (收缩)
+                    // 2指模式下 expansionFactor > 1 (膨胀)
+                    let newX = r * Math.sin(orig.phi) * Math.cos(orig.theta);
+                    let newY = r * Math.sin(orig.phi) * Math.sin(orig.theta) + waveY;
+                    let newZ = r * Math.cos(orig.phi);
+
+                    // 赋值位置
+                    positions[idx] = newX;
+                    positions[idx + 1] = newY;
+                    positions[idx + 2] = newZ;
+
+                    // --- 动态颜色逻辑 ---
+                    // 给每个粒子一点随机亮度差异，增加质感
+                    const brightnessVar = (Math.sin(i + time) + 1) * 0.1; 
+                    
+                    colors[idx] = Math.min(1, currentColor.r + brightnessVar);
+                    colors[idx + 1] = Math.min(1, currentColor.g + brightnessVar);
+                    colors[idx + 2] = Math.min(1, currentColor.b + brightnessVar);
                 }
-                
-                hue += 0.001;
-                if (hue > 1) hue = 0;
+
+                particles.geometry.attributes.position.needsUpdate = true;
+                particles.geometry.attributes.color.needsUpdate = true;
             }
+
             renderer.render(scene, camera);
         }
 
         // -----------------------------------------------------------
-        // MediaPipe Hands 初始化与逻辑
+        // MediaPipe Hands 逻辑
         // -----------------------------------------------------------
         function initMediaPipe() {
             const videoElement = document.getElementById('input_video');
             const canvasElement = document.getElementById('output_canvas');
             const canvasCtx = canvasElement.getContext('2d');
+            const modeText = document.getElementById('current-mode');
             
-            // 初始化 Hands 模型
             const hands = new Hands({locateFile: (file) => {
                 return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
             }});
@@ -313,13 +388,12 @@
             hands.setOptions({
                 maxNumHands: 1,
                 modelComplexity: 1,
-                minDetectionConfidence: 0.5,
-                minTrackingConfidence: 0.5
+                minDetectionConfidence: 0.6,
+                minTrackingConfidence: 0.6
             });
 
             hands.onResults(onResults);
 
-            // 初始化摄像头
             const cameraUtils = new Camera(videoElement, {
                 onFrame: async () => {
                     await hands.send({image: videoElement});
@@ -328,93 +402,131 @@
                 height: 240
             });
             
-            cameraUtils.start()
-                .then(() => {
-                    document.getElementById('loading').style.display = 'none';
-                })
-                .catch(err => {
-                    console.error(err);
-                    document.getElementById('loading').innerText = "无法访问摄像头，请检查权限。";
-                });
+            cameraUtils.start().then(() => {
+                document.getElementById('loading').style.display = 'none';
+            });
 
             function onResults(results) {
-                // 绘制摄像头预览
+                // 绘制
                 canvasCtx.save();
                 canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
                 canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
                 
-                const handDot = document.getElementById('hand-detected-dot');
-                const pinchDot = document.getElementById('pinch-detected-dot');
-                const instructionBox = document.getElementById('instruction-box');
-
                 if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-                    handDot.classList.add('active');
-                    
                     const landmarks = results.multiHandLandmarks[0];
                     
                     // 绘制骨骼
-                    drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: '#00FF00', lineWidth: 2});
-                    drawLandmarks(canvasCtx, landmarks, {color: '#FF0000', lineWidth: 1});
+                    drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: '#00FFFF', lineWidth: 2});
+                    drawLandmarks(canvasCtx, landmarks, {color: '#FF00FF', lineWidth: 1});
 
-                    // 核心逻辑：检测捏合 (食指尖 8 和 拇指尖 4)
+                    // 1. 检测捏合 (Pinch) - 优先级最高
                     const indexTip = landmarks[8];
                     const thumbTip = landmarks[4];
-                    const middleMCP = landmarks[9]; // 手掌中心大概位置
-
-                    // 计算距离 (简单的欧几里得距离)
-                    const distance = Math.sqrt(
-                        Math.pow(indexTip.x - thumbTip.x, 2) + 
-                        Math.pow(indexTip.y - thumbTip.y, 2)
-                    );
-
-                    // 阈值判断 (根据实际测试，0.05左右比较合适，因为坐标是归一化的0-1)
-                    // 注意：MediaPipe 坐标 x 是反的（镜像），这里我们先做逻辑处理
-                    // 屏幕坐标映射：
-                    // MediaPipe X: 0 (left) -> 1 (right)
-                    // 但我们在预览里做了镜像 scaleX(-1)，所以视觉上符合
-                    // 逻辑上：手向右移，landmarks[9].x 变大
+                    const middleMCP = landmarks[9];
                     
-                    const currentHandX = (1 - middleMCP.x) * window.innerWidth; // 反转X以匹配镜像
+                    const pinchDist = Math.hypot(indexTip.x - thumbTip.x, indexTip.y - thumbTip.y);
+                    const currentHandX = (1 - middleMCP.x) * window.innerWidth;
                     const currentHandY = middleMCP.y * window.innerHeight;
 
-                    if (distance < 0.08) {
-                        // === 捏合状态 (Drag) ===
-                        if (!isPinching) {
-                            // 刚开始捏合：记录初始位置
-                            isPinching = true;
-                            pinchDot.classList.add('active');
-                            instructionBox.classList.add('active');
-                            instructionBox.innerHTML = "✋ 保持捏合移动以旋转";
-
-                            mouseXOnMouseDown = currentHandX - windowHalfX;
-                            mouseYOnMouseDown = currentHandY - windowHalfY;
-                            targetRotationOnMouseDownY = targetRotationY;
-                            targetRotationOnMouseDownX = targetRotationX;
-                        } else {
-                            // 保持捏合：计算旋转
-                            const mouseX = currentHandX - windowHalfX;
-                            const mouseY = currentHandY - windowHalfY;
-
-                            // 灵敏度系数 0.008
-                            targetRotationY = targetRotationOnMouseDownY + (mouseX - mouseXOnMouseDown) * 0.008;
-                            targetRotationX = targetRotationOnMouseDownX + (mouseY - mouseYOnMouseDown) * 0.008;
-                        }
+                    if (pinchDist < 0.05) {
+                        // 进入捏合模式
+                        handlePinchMode(currentHandX, currentHandY);
                     } else {
-                        // === 松开状态 (Release) ===
-                        if (isPinching) {
-                            isPinching = false;
-                            pinchDot.classList.remove('active');
-                            instructionBox.classList.remove('active');
-                            instructionBox.innerHTML = "👌 食指拇指捏合 = 抓住";
-                        }
+                        // 松开捏合，进入手指计数模式
+                        isPinching = false;
+                        
+                        // 2. 计算伸出的手指数量
+                        const count = countFingers(landmarks);
+                        updateStateByFingerCount(count);
                     }
-
                 } else {
-                    handDot.classList.remove('active');
-                    pinchDot.classList.remove('active');
-                    isPinching = false;
+                    // 没检测到手 - 恢复默认
+                    resetToIdle();
                 }
                 canvasCtx.restore();
+            }
+            
+            // 简单的手指计数算法
+            function countFingers(landmarks) {
+                let count = 0;
+                // 指尖索引: 8(食指), 12(中指), 16(无名指), 20(小指)
+                // 关节索引: 6, 10, 14, 18 (PIP 关节)
+                // 简单判定：指尖 y 坐标小于关节 y 坐标 (注意：屏幕坐标系 y 向下增大，所以上面的点 y 值更小)
+                
+                if (landmarks[8].y < landmarks[6].y) count++;
+                if (landmarks[12].y < landmarks[10].y) count++;
+                if (landmarks[16].y < landmarks[14].y) count++;
+                if (landmarks[20].y < landmarks[18].y) count++;
+                
+                // 拇指比较特殊，比较 x 坐标 (假设右手，对于镜像后的画面需调整逻辑，这里简化为距离比较)
+                // 为了简单起见，1-3指控制通常不包含拇指，或者我们只算这4根
+                return count;
+            }
+
+            function handlePinchMode(x, y) {
+                if (!isPinching) {
+                    isPinching = true;
+                    mouseXOnMouseDown = x - windowHalfX;
+                    mouseYOnMouseDown = y - windowHalfY;
+                    targetRotationOnMouseDownY = targetRotationY;
+                    targetRotationOnMouseDownX = targetRotationX;
+                    
+                    // 捏合时视觉反馈
+                    modeText.innerText = "🌀 捏合旋转中";
+                    modeText.style.color = "#00FFFF";
+                } else {
+                    const dx = x - windowHalfX;
+                    const dy = y - windowHalfY;
+                    targetRotationY = targetRotationOnMouseDownY + (dx - mouseXOnMouseDown) * 0.008;
+                    targetRotationX = targetRotationOnMouseDownX + (dy - mouseYOnMouseDown) * 0.008;
+                }
+                // 捏合时保持默认颜色
+                setTargetParams(1.0, 0, 0.0, {r: 0.5, g: 0.9, b: 0.9}); 
+            }
+
+            function updateStateByFingerCount(count) {
+                // 防止抖动：可以加一个简单的防抖逻辑，这里直接响应
+                
+                if (count === 0 || count > 3) {
+                    // 握拳或张开全手 -> 待机
+                    resetToIdle();
+                    return;
+                }
+
+                if (count === 1) {
+                    // 模式 1: 聚能 (金色，收缩，快速)
+                    modeText.innerText = "☝️ 聚能模式";
+                    modeText.style.color = "#FFD700"; // Gold
+                    setTargetParams(0.6, 0, 0.02, {r: 1.0, g: 0.8, b: 0.1});
+                } 
+                else if (count === 2) {
+                    // 模式 2: 爆发 (红色，膨胀，中速)
+                    modeText.innerText = "✌️ 爆发模式";
+                    modeText.style.color = "#FF3333"; // Red
+                    setTargetParams(1.4, 0, 0.005, {r: 1.0, g: 0.2, b: 0.2});
+                } 
+                else if (count === 3) {
+                    // 模式 3: 波浪 (紫色，波浪，乱序)
+                    modeText.innerText = "🤟 时空波浪";
+                    modeText.style.color = "#BF00FF"; // Purple
+                    setTargetParams(1.1, 1.0, 0.002, {r: 0.7, g: 0.0, b: 1.0});
+                }
+            }
+
+            function resetToIdle() {
+                modeText.innerText = "等待手势...";
+                modeText.style.color = "#FFFFFF";
+                isPinching = false;
+                // 恢复默认: 1.0大小，无波浪，慢速，青蓝色
+                setTargetParams(1.0, 0, 0.001, {r: 0.2, g: 0.8, b: 1.0});
+            }
+
+            // 统一设置目标参数的辅助函数
+            function setTargetParams(exp, wave, rotSpeed, col) {
+                targetExpansion = exp;
+                targetWave = wave;
+                targetRotationSpeed = rotSpeed;
+                targetColor = col;
             }
         }
     </script>
