@@ -121,7 +121,7 @@
             object-fit: cover;
             display: block; 
             position: absolute;
-            opacity: 0.1;
+            opacity: 0.3; /* 提高透明度，让用户看到摄像头是否工作 */
         }
         #output_canvas {
             width: 100%;
@@ -162,7 +162,7 @@
 
     <div id="ui-container">
         <h1>形态魔法力场 V8.0</h1>
-        <div id="current-mode" class="mode-display" style="color:#00FFFF;">等待手势...</div>
+        <div id="current-mode" class="mode-display" style="color:#00FFFF;">初始化摄像头...</div>
         
         <div class="instruction-list">
             <div class="instruction-item"><span class="key">☝️</span> 1指 · 陆之形 (深蓝)</div>
@@ -213,6 +213,7 @@
         const canvasCtx = canvasElement.getContext('2d');
         const loadingElement = document.getElementById('loading');
         const billboardElement = document.getElementById('text-billboard');
+        const modeDisplayElement = document.getElementById('current-mode');
         let hands;
 
         // -----------------------------------------------------------
@@ -463,10 +464,22 @@
             
             setupCamera().then(() => {
                 loadingElement.style.display = 'none';
+                // 成功启动后，明确更新状态
+                modeDisplayElement.innerText = "✅ 摄像头已就绪，请伸出手掌";
+                modeDisplayElement.style.color = "#00FF00";
                 sendToMediaPipe(); 
             }).catch(error => {
-                const errorMessage = `❌ 摄像头启动失败 (${error.name})。`;
-                loadingElement.innerHTML = `<span class="error-message">${errorMessage}</span><br>请检查权限或是否被占用。`;
+                // 摄像头启动失败时，显示详细错误信息
+                const errorMessage = `❌ 摄像头启动失败 (${error.name || '未知错误'})。`;
+                loadingElement.innerHTML = `<span style="color: #FF4500; font-size: 1.8rem;">${errorMessage}</span>
+                    <ul style="list-style: none; padding: 15px; margin-top: 15px; text-align: left; background: rgba(255, 69, 0, 0.1); border-radius: 8px;">
+                        <li>1. 请检查您的浏览器是否**允许了摄像头权限**。</li>
+                        <li>2. 摄像头是否被**其他程序**（如微信、QQ、会议软件）占用。</li>
+                        <li>3. 尝试**刷新页面**再试一次。</li>
+                    </ul>`;
+                loadingElement.style.display = 'block';
+                modeDisplayElement.innerText = "❌ 摄像头故障";
+                modeDisplayElement.style.color = "#FF4500";
                 console.error("Camera setup failed:", error);
             });
         }
@@ -509,4 +522,115 @@
                 const landmarks = results.multiHandLandmarks[0];
                 
                 // 绘制骨骼
-                drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: 'rgba(0, 255, 255, 0.7)', lineWidth: 2
+                drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: 'rgba(0, 255, 255, 0.7)', lineWidth: 2});
+                drawLandmarks(canvasCtx, landmarks, {color: '#FF00FF', lineWidth: 1});
+
+                fingerCount = countFingers(landmarks);
+                updateStateByFingerCount(fingerCount);
+            } else {
+                updateStateByFingerCount(0);
+            }
+            canvasCtx.restore();
+        }
+        
+        /**
+         * 统计向上伸出的手指数量 
+         */
+        function countFingers(landmarks) {
+            let count = 0;
+            // 简单判定：指尖 y 坐标小于关节 y 坐标 (y 向下增大)
+            if (landmarks[8].y < landmarks[6].y) count++; // 食指
+            if (landmarks[12].y < landmarks[10].y) count++; // 中指
+            if (landmarks[16].y < landmarks[14].y) count++; // 无名指
+            if (landmarks[20].y < landmarks[18].y) count++; // 小指
+            
+            // 拇指判定逻辑保持简单，不单独计算，只依赖于其他四指
+            
+            return count;
+        }
+
+        /**
+         * 根据手指数量切换粒子目标形态
+         */
+        function updateStateByFingerCount(count) {
+            let shapeName = 'Sphere';
+            let display = "等待手势...";
+            let textContent = '';
+
+            if (count === 1) {
+                shapeName = '陆';
+                display = "陆之形 · 聚能";
+                textContent = '陆';
+            } 
+            else if (count === 2) {
+                shapeName = '知';
+                display = "知之形 · 智慧";
+                textContent = '知';
+            } 
+            else if (count === 3) {
+                shapeName = '舟';
+                display = "舟之形 · 航行";
+                textContent = '舟';
+            } 
+            else if (count >= 4) { // 张开手掌 (4指或5指)
+                shapeName = '生日快乐';
+                display = "🎉 生日快乐! 🎂";
+                textContent = '生日快乐';
+            } 
+            else {
+                // 如果是 Sphere 状态，且摄像头启动成功，不覆盖成功信息
+                if (modeDisplayElement.innerText.includes("✅")) {
+                    display = "✅ 摄像头已就绪，请伸出手掌";
+                }
+            }
+
+
+            // 1. 更新 UI 文本 (仅在非故障状态下更新)
+            if (!modeDisplayElement.innerText.includes("❌")) {
+                modeDisplayElement.innerText = display;
+            }
+
+            // 2. 目标颜色和形态
+            targetColor = TEXT_COLOR_MAP[shapeName];
+            targetRotationY += IDLE_ROTATION_SPEED; 
+
+            if (shapeName !== currentShapeName) {
+                if (shapeName === 'Sphere') {
+                    currentTargetPoints = originalPositions;
+                } else {
+                    currentTargetPoints = generateShapePoints(shapeName);
+                }
+                currentShapeName = shapeName;
+            }
+
+            // 3. 控制 2D 辉光文字显示 (V8.0 核心)
+            if (textContent) {
+                // 设置 2D 文字内容和基础颜色
+                billboardElement.innerText = textContent;
+                billboardElement.classList.add('text-visible');
+                
+                // 设置辉光特效 (匹配目标颜色)
+                const hex = targetColor.hex;
+                // 使用 multiple text-shadow 创建强烈辉光效果
+                billboardElement.style.textShadow = `
+                    0 0 10px ${hex}, 
+                    0 0 20px ${hex}88, 
+                    0 0 40px ${hex}44, 
+                    0 0 80px ${hex}22`;
+
+            } else {
+                // 恢复球体时隐藏文字
+                billboardElement.classList.remove('text-visible');
+            }
+        }
+
+
+        // 页面加载完成后，先启动 Three.js，再启动 MediaPipe
+        window.onload = function() {
+            initThreeJS();
+            animate(); 
+            initMediaPipe();
+        };
+    </script>
+</body>
+</html>
