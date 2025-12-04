@@ -104,6 +104,8 @@
             background: rgba(0,0,0,0.8);
             padding: 20px;
             border-radius: 10px;
+            max-width: 80%;
+            text-align: center;
         }
     </style>
 </head>
@@ -402,8 +404,15 @@
                 height: 240
             });
             
+            // ** 关键修改：添加错误捕获 **
             cameraUtils.start().then(() => {
                 document.getElementById('loading').style.display = 'none';
+            }).catch(error => {
+                const loadingElement = document.getElementById('loading');
+                loadingElement.style.color = '#FF4500'; // OrangeRed
+                loadingElement.style.textShadow = '0 0 10px #FF4500';
+                loadingElement.innerHTML = `❌ 摄像头启动失败 (${error.name})。<br>请检查：<br>1. 浏览器权限。<br>2. 摄像头是否被其他程序占用。`;
+                console.error("Camera startup failed:", error);
             });
 
             function onResults(results) {
