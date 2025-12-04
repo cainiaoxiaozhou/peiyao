@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>3D 粒子形态变换手势控制 V7.0</title>
+    <title>3D 粒子形态变换手势控制 V8.0</title>
     <!-- 引入 MediaPipe 库 -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
@@ -29,7 +29,27 @@
             left: 0;
             z-index: 5; 
             /* 粒子光晕效果增强 */
-            filter: drop-shadow(0 0 8px rgba(0, 255, 255, 0.9)) drop-shadow(0 0 20px rgba(255, 0, 255, 0.5));
+            filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.5));
+        }
+        /* ---------------- 2D 辉光文字 BILLBOARD (新增) ---------------- */
+        #text-billboard {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) scale(0.8);
+            font-size: 15vw; /* 巨大文字，保证冲击力 */
+            font-weight: 900;
+            pointer-events: none;
+            opacity: 0; /* 初始隐藏 */
+            /* 酷炫过渡动画 */
+            transition: opacity 0.3s ease-in-out, transform 0.3s cubic-bezier(0.68, -0.55, 0.27, 1.55);
+            line-height: 1;
+            white-space: nowrap;
+            text-align: center;
+        }
+        .text-visible {
+            opacity: 1 !important;
+            transform: translate(-50%, -50%) scale(1);
         }
         /* ---------------- UI 元素 ---------------- */
         #ui-container {
@@ -52,7 +72,7 @@
             text-shadow: 0 0 5px rgba(0,255,255,0.5);
         }
         .mode-display {
-            font-size: 3.5rem; /* 字体更大 */
+            font-size: 3.5rem; 
             font-weight: bold;
             margin-top: 15px;
             text-shadow: 0 0 12px rgba(255,255,255,0.9);
@@ -132,13 +152,16 @@
 <body>
 
     <div id="loading">
-        ✨ 正在启动形态魔法引擎 V7.0... 
+        ⚡️ 正在启动极速辉光魔法引擎 V8.0... 
         <br>
-        <small>（笔画优化中，请稍候...）</small>
+        <small>（粒子加速中，请稍候...）</small>
     </div>
+    
+    <!-- 新增：居中显示、带特效的 2D 文字 -->
+    <div id="text-billboard"></div>
 
     <div id="ui-container">
-        <h1>形态魔法力场 V7.0</h1>
+        <h1>形态魔法力场 V8.0</h1>
         <div id="current-mode" class="mode-display" style="color:#00FFFF;">等待手势...</div>
         
         <div class="instruction-list">
@@ -157,17 +180,23 @@
 
     <script>
         // --- 全局常量 ---
-        const PARTICLE_COUNT = 4000; // 粒子数量增加，使笔画更密集
-        const SHAPE_SCALE = 350;     // 汉字形态的缩放比例
-        const LERP_SPEED = 0.1;      // 形态变换速度稍微加快
-        const IDLE_ROTATION_SPEED = 0.002; // 默认旋转速度
-        const PINCH_ROTATION_SPEED = 0.008; // 手势旋转灵敏度
+        const PARTICLE_COUNT = 4000; 
+        const SHAPE_SCALE = 350;     
+        const LERP_SPEED = 0.3;      // 形态变换速度大幅提升 (V8.0 关键点)
+        const IDLE_ROTATION_SPEED = 0.002; 
+        const TEXT_COLOR_MAP = {
+            '陆': { r: 0.1, g: 0.4, b: 0.9, hex: '#4169e1' }, // RoyalBlue
+            '知': { r: 0.9, g: 0.1, b: 0.9, hex: '#ff00ff' }, // Magenta
+            '舟': { r: 1.0, g: 0.0, b: 0.0, hex: '#ff4500' }, // OrangeRed
+            '生日快乐': { r: 1.0, g: 0.8, b: 0.1, hex: '#ffd700' }, // Gold
+            'Sphere': { r: 0.1, g: 0.9, b: 0.9, hex: '#0ff' }
+        };
         
         // --- Three.js 变量 ---
         let scene, camera, renderer, particles;
-        let originalPositions = []; // 默认球体位置
-        let currentTargetPoints = []; // 目标形状的坐标 {x, y, z}
-        let particleInitialPositions = []; // 粒子当前位置（用于动画插值）
+        let originalPositions = []; 
+        let currentTargetPoints = []; 
+        let currentShapeName = 'Sphere';
         
         // 旋转/动画控制
         let targetRotationY = 0.0;
@@ -175,87 +204,65 @@
         let time = 0;
         
         // 颜色目标 (RGB)
-        let currentColor = { r: 0.2, g: 0.8, b: 1.0 }; 
-        let targetColor = { r: 0.2, g: 0.8, b: 1.0 };
+        let currentColor = TEXT_COLOR_MAP.Sphere; 
+        let targetColor = TEXT_COLOR_MAP.Sphere;
         
-        // MediaPipe DOM 元素
+        // DOM 元素
         const videoElement = document.getElementById('input_video');
         const canvasElement = document.getElementById('output_canvas');
         const canvasCtx = canvasElement.getContext('2d');
         const loadingElement = document.getElementById('loading');
+        const billboardElement = document.getElementById('text-billboard');
         let hands;
 
         // -----------------------------------------------------------
-        // 1. 汉字形态点定义 (V7.0 笔画优化)
+        // 1. 汉字形态点定义 (沿用 V7.0 笔画优化)
         // -----------------------------------------------------------
         
-        /**
-         * 定义中文字符/短语的线条路径 (归一化到 -100 到 100)。
-         * 路径经过精心调整，以匹配更准确的笔画结构。
-         */
         const ShapePaths = {
-            // 陆 (Lù) - 阝+坴
             '陆': [
-                // 阝 (耳刀旁)
-                [[-100, 70], [-100, -50], [-80, -90], [-60, -80]], // 弯折
-                [[ -80, 50], [-50, 50]], // 顶部横折
-                // 坴 (右侧)
-                [[0, 80], [40, 80]], // 土横
-                [[20, 80], [20, 50]], // 土竖
-                [[ -20, 40], [ 60, 40]], // 第二横
-                [[20, 40], [20, -50]], // 丰竖
-                [[ -40, -50], [ 80, -50]], // 底横
-                [[20, -50], [-10, -80]], // 撇
-                [[20, -50], [50, -80]] // 捺
+                [[-100, 70], [-100, -50], [-80, -90], [-60, -80]], 
+                [[ -80, 50], [-50, 50]], 
+                [[0, 80], [40, 80]], 
+                [[20, 80], [20, 50]], 
+                [[ -20, 40], [ 60, 40]], 
+                [[20, 40], [20, -50]], 
+                [[ -40, -50], [ 80, -50]], 
+                [[20, -50], [-10, -80]], 
+                [[20, -50], [50, -80]] 
             ],
-            // 知 (Zhī) - 矢+口
             '知': [
-                // 矢 (左侧)
-                [[ -80, 70], [ 40, 70]], // 横
-                [[-20, 70], [-20, 20]], // 竖
-                [[ -70, 20], [ 50, 20]], // 中横
-                [[-50, -10], [10, -10]], // 下横
-                // 口 (右侧)
-                [[60, 60], [100, 60], [100, 0], [60, 0], [60, 60]] // 框
+                [[ -80, 70], [ 40, 70]], 
+                [[-20, 70], [-20, 20]], 
+                [[ -70, 20], [ 50, 20]], 
+                [[-50, -10], [10, -10]], 
+                [[60, 60], [100, 60], [100, 0], [60, 0], [60, 60]] 
             ],
-            // 舟 (Zhōu) - 船形
             '舟': [
-                [[ -80, 70], [ 80, 70]], // 顶部横
-                [[-100, 40], [-50, -90], [50, -90], [100, 40]], // 底部船身
-                [[0, 70], [0, -50]], // 中轴
-                [[-50, 40], [50, 40]], // 中部横
-                [[-30, 0], [30, 0]] // 船舱内横
+                [[ -80, 70], [ 80, 70]], 
+                [[-100, 40], [-50, -90], [50, -90], [100, 40]], 
+                [[0, 70], [0, -50]], 
+                [[-50, 40], [50, 40]], 
+                [[-30, 0], [30, 0]] 
             ],
-            // 生日快乐
             '生日快乐': [
-                // 生 (中心 -150)
                 [[-190, 60], [-110, 60]], [[-150, 60], [-150, -60]], [[-170, -10], [-130, -10]], [[-190, -60], [-110, -60]],
-                // 日 (中心 -50)
                 [[-80, 60], [-20, 60], [-20, -60], [-80, -60], [-80, 60]], [[-80, 0], [-20, 0]],
-                // 快 (中心 50)
                 [[20, 60], [80, 60]], [[50, 60], [50, -60]], [[10, -30], [90, -30]], [[50, -60], [20, 0]],
-                // 乐 (中心 150)
                 [[130, 60], [180, 60]], [[155, 60], [155, -20]], [[110, -20], [200, -20]], [[155, -20], [130, -60]], [[155, -20], [180, -60]]
             ]
         };
 
-        /**
-         * 根据形状生成 PARTICLE_COUNT 个 3D 坐标点。
-         */
         function generateShapePoints(shapeKey) {
             const paths = ShapePaths[shapeKey];
             if (!paths) return [];
 
             let totalLength = 0;
             const segmentLengths = [];
-
-            // 1. 计算总长度
             paths.forEach(path => {
                 let pathLength = 0;
                 for (let i = 0; i < path.length - 1; i++) {
-                    const [x1, y1] = path[i];
-                    const [x2, y2] = path[i + 1];
-                    pathLength += Math.hypot(x2 - x1, y2 - y1);
+                    pathLength += Math.hypot(path[i+1][0] - path[i][0], path[i+1][1] - path[i][1]);
                 }
                 segmentLengths.push(pathLength);
                 totalLength += pathLength;
@@ -263,31 +270,21 @@
 
             if (totalLength === 0) return [];
 
-            // 2. 根据长度比例分配粒子
             const targetPoints = [];
-            
-            // 目标粒子的总长度 / 粒子总数
             const desiredParticleLength = totalLength / PARTICLE_COUNT; 
-            let requiredParticles = PARTICLE_COUNT;
-
+            
             paths.forEach((path) => {
                 for (let i = 0; i < path.length - 1; i++) {
                     const [x1, y1] = path[i];
                     const [x2, y2] = path[i + 1];
                     const segmentLength = Math.hypot(x2 - x1, y2 - y1);
-
-                    // 计算该段需要多少粒子，确保粒子均匀分布
                     let numParticlesInSegment = Math.ceil(segmentLength / desiredParticleLength);
                     
                     for (let j = 0; j < numParticlesInSegment; j++) {
                         if (targetPoints.length >= PARTICLE_COUNT) break;
-
-                        // 线性插值
                         const t = j / numParticlesInSegment; 
                         const x = x1 + (x2 - x1) * t;
-                        const y = y1 + (x2 - x1) * t; 
-
-                        // Z轴随机深度
+                        const y = y1 + (y2 - y1) * t; 
                         const z = Math.random() * 60 - 30; 
 
                         targetPoints.push({
@@ -299,20 +296,14 @@
                 }
             });
             
-            // 3. 填充或截断 (确保最终数量是 PARTICLE_COUNT)
             while (targetPoints.length < PARTICLE_COUNT) {
-                // 如果不够，用随机球体坐标补足
                 targetPoints.push(generateSpherePoint(600)); 
             }
 
-            // 随机打乱目标点，确保平滑过渡
             targetPoints.sort(() => Math.random() - 0.5);
             return targetPoints.slice(0, PARTICLE_COUNT); 
         }
 
-        /**
-         * 生成一个球体上的随机点
-         */
         function generateSpherePoint(radius) {
             const r = radius + Math.random() * 100;
             const theta = Math.random() * Math.PI * 2;
@@ -331,7 +322,6 @@
         // -----------------------------------------------------------
         function initThreeJS() {
             scene = new THREE.Scene();
-            // 增加雾的颜色，形成深空/星空背景
             scene.fog = new THREE.FogExp2(0x00000a, 0.0008); 
 
             camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 3000);
@@ -342,7 +332,6 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
             document.body.appendChild(renderer.domElement);
 
-            // 材质
             const particleMaterial = new THREE.PointsMaterial({
                 color: 0xffffff,
                 size: 15, 
@@ -359,14 +348,11 @@
             const colors = [];
             const colorObj = new THREE.Color();
             
-            // 初始化粒子位置和颜色
             for (let i = 0; i < PARTICLE_COUNT; i++) {
                 const p = generateSpherePoint(600);
                 
                 positions.push(p.x, p.y, p.z);
-                
                 originalPositions.push(p); 
-                particleInitialPositions.push({...p}); // 拷贝初始位置
                 
                 colorObj.setHSL(0.6, 0.8, 0.5); 
                 colors.push(colorObj.r, colorObj.g, colorObj.b);
@@ -382,7 +368,6 @@
             currentTargetPoints = originalPositions; // 默认目标是球体
         }
 
-        // 创建粒子贴图 (光点)
         function getSprite() {
             const canvas = document.createElement('canvas');
             canvas.width = 64;
@@ -406,21 +391,31 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
         }
         
+        // 辅助函数：将 RGB 对象转换为 CSS 颜色字符串
+        function rgbToCss(r, g, b) {
+            return `rgb(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)})`;
+        }
+        
         // 核心动画循环
         function animate() {
             requestAnimationFrame(animate);
             time += 0.01;
 
-            // 1. 旋转和惯性
             finalRotationY += (targetRotationY - finalRotationY) * 0.05;
             particles.rotation.y = finalRotationY;
             
-            // 2. 颜色插值
+            // 颜色插值
             currentColor.r += (targetColor.r - currentColor.r) * LERP_SPEED;
             currentColor.g += (targetColor.g - currentColor.g) * LERP_SPEED;
             currentColor.b += (targetColor.b - currentColor.b) * LERP_SPEED;
+            
+            // 计算当前颜色
+            const currentCssColor = rgbToCss(currentColor.r, currentColor.g, currentColor.b);
+            
+            // 更新 2D 文字的颜色
+            billboardElement.style.color = currentCssColor;
 
-            // 3. 粒子形态插值
+            // 粒子形态插值
             if (particles && currentTargetPoints.length === PARTICLE_COUNT) {
                 const positions = particles.geometry.attributes.position.array;
                 const colors = particles.geometry.attributes.color.array;
@@ -429,19 +424,13 @@
                     const idx = i * 3;
                     const target = currentTargetPoints[i];
                     
-                    // a. 位置插值 (Lerp)
-                    // 使用当前位置作为起点
+                    // a. 位置插值 (Lerp) - 使用更快的 LERP_SPEED
                     positions[idx] += (target.x - positions[idx]) * LERP_SPEED;
                     positions[idx + 1] += (target.y - positions[idx + 1]) * LERP_SPEED;
                     positions[idx + 2] += (target.z - positions[idx + 2]) * LERP_SPEED;
 
-                    // b. 增加微小的躁动/波纹效果 
-                    const noise = Math.sin(time * 5 + i * 0.1) * 10;
-                    positions[idx + 1] += noise * 0.005;
-                    positions[idx + 2] += noise * 0.005;
-                    
-                    // c. 颜色更新
-                    const brightnessVar = (Math.sin(i * 0.1 + time * 5) + 1) * 0.05; 
+                    // b. 颜色更新
+                    const brightnessVar = (Math.sin(time * 5 + i * 0.1) + 1) * 0.05; 
                     colors[idx] = Math.min(1, currentColor.r + brightnessVar);
                     colors[idx + 1] = Math.min(1, currentColor.g + brightnessVar);
                     colors[idx + 2] = Math.min(1, currentColor.b + brightnessVar);
@@ -520,99 +509,4 @@
                 const landmarks = results.multiHandLandmarks[0];
                 
                 // 绘制骨骼
-                drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: 'rgba(0, 255, 255, 0.7)', lineWidth: 2});
-                drawLandmarks(canvasCtx, landmarks, {color: '#FF00FF', lineWidth: 1});
-
-                fingerCount = countFingers(landmarks);
-                updateStateByFingerCount(fingerCount);
-            } else {
-                updateStateByFingerCount(0);
-            }
-            canvasCtx.restore();
-        }
-        
-        /**
-         * 统计向上伸出的手指数量 
-         */
-        function countFingers(landmarks) {
-            let count = 0;
-            // 简单判定：指尖 y 坐标小于关节 y 坐标 (y 向下增大)
-            if (landmarks[8].y < landmarks[6].y) count++; // 食指
-            if (landmarks[12].y < landmarks[10].y) count++; // 中指
-            if (landmarks[16].y < landmarks[14].y) count++; // 无名指
-            if (landmarks[20].y < landmarks[18].y) count++; // 小指
-            
-            // 拇指 (如果指尖比根部高，并且食指收起，则可以算拇指)
-            if (landmarks[4].y < landmarks[2].y && landmarks[4].x < landmarks[3].x) {
-                // 如果其他四个手指都是收起的 (即count==0)，则单独的拇指也算1指，或者直接忽略拇指保持简单
-                // 保持简单，如果其他手指展开，拇指也展开，算作4指或5指
-                const thumb_dist = Math.hypot(landmarks[4].x - landmarks[0].x, landmarks[4].y - landmarks[0].y);
-                const wrist_dist = Math.hypot(landmarks[9].x - landmarks[0].x, landmarks[9].y - landmarks[0].y);
-                if (thumb_dist > wrist_dist * 0.8) {
-                    // count++; // 不再单独计算拇指，因为它会干扰 1-3 指手势
-                }
-            }
-            
-            return count;
-        }
-
-        /**
-         * 根据手指数量切换粒子目标形态
-         */
-        function updateStateByFingerCount(count) {
-            let shapeName = 'Sphere';
-            let color = { r: 0.2, g: 0.8, b: 1.0 };
-            let display = "等待手势...";
-
-            if (count === 1) {
-                shapeName = '陆';
-                color = { r: 0.1, g: 0.4, b: 0.9 }; // 深蓝
-                display = "陆之形 · 聚能";
-            } 
-            else if (count === 2) {
-                shapeName = '知';
-                color = { r: 0.9, g: 0.1, b: 0.9 }; // 魔紫
-                display = "知之形 · 智慧";
-            } 
-            else if (count === 3) {
-                shapeName = '舟';
-                color = { r: 1.0, g: 0.0, b: 0.0 }; // 炙红
-                display = "舟之形 · 航行";
-            } 
-            else if (count >= 4) { // 张开手掌 (4指或5指)
-                shapeName = '生日快乐';
-                color = { r: 1.0, g: 0.8, b: 0.1 }; // 耀金
-                display = "🎉 生日快乐! 🎂";
-            } else {
-                 // 0指时恢复球体，但保持颜色过渡
-                 color = { r: 0.1, g: 0.9, b: 0.9 }; 
-            }
-
-            document.getElementById('current-mode').innerText = display;
-            targetColor = color;
-            targetRotationY += IDLE_ROTATION_SPEED; // 保持默认旋转
-
-            // 切换目标形态
-            if (shapeName === 'Sphere') {
-                currentTargetPoints = originalPositions;
-            } else {
-                // 仅在目标形态改变时才重新生成点集
-                if (!currentTargetPoints.isShape || currentTargetPoints[0].shapeName !== shapeName) {
-                     currentTargetPoints = generateShapePoints(shapeName);
-                     // 标记形状名称，防止重复生成
-                     currentTargetPoints.isShape = true;
-                     currentTargetPoints.forEach(p => p.shapeName = shapeName);
-                }
-            }
-        }
-
-
-        // 页面加载完成后，先启动 Three.js，再启动 MediaPipe
-        window.onload = function() {
-            initThreeJS();
-            animate(); 
-            initMediaPipe();
-        };
-    </script>
-</body>
-</html>
+                drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: 'rgba(0, 255, 255, 0.7)', lineWidth: 2
