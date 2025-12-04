@@ -2,489 +2,481 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>3D 粒子文字控制器 V2.0</title>
-    <!-- 引入 Three.js 库 (用于 3D 渲染) -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>生日快乐 - 粒子特效 (手势控制)</title>
+    <!-- 引入 Three.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <!-- 引入 MediaPipe 库 (用于手势识别) -->
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
-
+    <!-- 引入 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- 引入 MediaPipe 姿势识别库 (Pose) 和摄像头工具 -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469406/pose.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675469406/camera_utils.js"></script>
+    
     <style>
+        /* 设置全局字体和背景，确保沉浸感 */
         body {
             margin: 0;
             overflow: hidden;
-            background-color: #000000;
             font-family: 'Inter', sans-serif;
-            color: white;
+            background-color: #0d0c1d; /* 深色背景 */
+            color: #ffffff;
         }
-
-        /* ---------------- 3D 渲染 Canvas (全屏) ---------------- */
-        #three-canvas {
-            display: block;
-            position: absolute;
-            top: 0;
-            left: 0;
+        #container {
             width: 100vw;
             height: 100vh;
-            z-index: 1;
-        }
-
-        /* ---------------- UI 元素 ---------------- */
-        #ui-container {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            width: auto;
-            text-align: left;
-            pointer-events: none; 
-            z-index: 10;
-        }
-        h1 {
-            font-size: 2.2rem;
-            margin: 0;
-            background: linear-gradient(90deg, #00FFFF, #FF00FF);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            font-weight: 900;
-            letter-spacing: 2px;
-            text-shadow: 0 0 5px rgba(0,255,255,0.5);
-        }
-        .mode-display {
-            font-size: 1.5rem; /* 稍微缩小 */
-            font-weight: bold;
-            margin-top: 15px;
-            text-shadow: 0 0 8px rgba(255,255,255,0.9);
-            transition: color 0.3s, text-shadow 0.3s;
-        }
-        .instruction-list {
-            margin-top: 25px;
-            font-size: 1rem;
-            color: rgba(255,255,255,0.8);
-            background: rgba(0,0,0,0.7);
-            padding: 20px;
-            border-radius: 12px;
-            border-left: 5px solid #00FFFF;
-            box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
-            pointer-events: auto;
-        }
-        .instruction-item {
-            margin-bottom: 8px;
             display: flex;
+            justify-content: center;
             align-items: center;
-        }
-        .key {
-            font-weight: bold;
-            color: #FFD700;
-            margin-right: 12px;
-            width: 40px;
-            font-size: 1.2rem;
-        }
-
-        /* ---------------- 摄像头预览窗口 ---------------- */
-        #camera-container {
-            position: absolute;
-            bottom: 20px;
-            right: 20px;
-            width: 180px; 
-            height: 135px;
-            border-radius: 8px;
-            overflow: hidden;
-            border: 2px solid rgba(0, 255, 255, 0.4);
-            z-index: 20;
-            background: #000;
-            transform: scaleX(-1); 
-            box-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
-        }
-        #input_video {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            display: block; 
-            position: absolute;
-            opacity: 0.3; 
-        }
-        #output_canvas {
-            width: 100%;
-            height: 100%;
-            display: block;
             position: relative;
         }
+        canvas {
+            display: block;
+        }
+        /* 针对粒子特效的按钮样式 */
+        .control-button {
+            @apply p-3 px-6 m-2 text-white font-bold rounded-xl shadow-lg transition-all duration-300 ease-in-out cursor-pointer;
+            background-image: linear-gradient(135deg, #6c63ff 0%, #a252ff 100%);
+            border: 2px solid #a252ff;
+            transform: scale(1);
+        }
+        .control-button:hover {
+            box-shadow: 0 0 20px rgba(162, 82, 255, 0.7);
+            transform: scale(1.05);
+        }
+        .control-button:focus {
+            outline: none;
+            box-shadow: 0 0 0 4px rgba(108, 99, 255, 0.5);
+        }
+        
+        /* 摄像头视频流样式 */
+        #video-container {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 240px;
+            height: 180px;
+            z-index: 100;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+            border: 2px solid #a252ff;
+            background: #000;
+        }
 
-        /* 加载和调试状态 */
-        #loading {
+        #videoElement {
+            width: 100%;
+            height: 100%;
+            transform: scaleX(-1); /* 镜像翻转，看起来更自然 */
+            object-fit: cover;
+        }
+
+        #loadingMessage {
             position: absolute;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            font-size: 1.5rem;
-            color: #00FFFF;
-            text-shadow: 0 0 15px #00FFFF;
-            z-index: 100;
-            display: block;
-            background: rgba(0,0,0,0.9);
-            padding: 30px;
-            border-radius: 15px;
-            max-width: 80%;
+            color: #ffffff;
+            font-size: 14px;
             text-align: center;
-            border: 2px solid #FF00FF;
-        }
-
-        /* 隐藏的 2D Canvas，用于文字采样 */
-        #text-sampler {
-            display: none;
         }
     </style>
 </head>
 <body>
 
-    <canvas id="three-canvas"></canvas>
-    <!-- 隐藏的 2D Canvas，用于将文字转换为像素数据 -->
-    <canvas id="text-sampler" width="512" height="512"></canvas>
+    <div id="container"></div>
 
-    <div id="loading">
-        ⚡️ 正在启动 3D 粒子文字控制器... 
-        <br>
-        <small>（初始化摄像头和 3D 引擎中...）</small>
+    <!-- 摄像头视频容器 -->
+    <div id="video-container">
+        <video id="videoElement" autoplay muted playsinline></video>
+        <div id="loadingMessage">正在加载姿势识别模型...</div>
+        <!-- 用于在视频上绘制骨骼点的Canvas（可选，此处省略以保持简洁） -->
     </div>
-    
-    <div id="ui-container">
-        <h1>手势文字魔法 V2.0 (粒子)</h1>
-        <div id="current-mode" class="mode-display" style="color:#00FFFF;">初始化摄像头...</div>
-        
-        <div class="instruction-list">
-            <div class="instruction-item"><span class="key">☝️</span> 1指 -> 陆</div>
-            <div class="instruction-item"><span class="key">✌️</span> 2指 -> 知</div>
-            <div class="instruction-item"><span class="key">🤟</span> 3指 -> 舟</div>
-            <div class="instruction-item"><span class="key">🖐️</span> 4+指 -> 快乐</div>
-            <div class="instruction-item"><span class="key">握拳</span> -> 隐藏/重置</div>
+
+
+    <!-- 交互控制面板 (保留现有按钮) -->
+    <div id="controls" class="fixed bottom-0 left-0 right-0 p-4 flex justify-center flex-wrap z-10 bg-black bg-opacity-30">
+        <div id="gesture-status" class="w-full text-center text-sm font-semibold mb-2 text-yellow-300">
+            手势状态：等待动作...
         </div>
-    </div>
-
-    <!-- 摄像头预览区域 -->
-    <div id="camera-container">
-        <video id="input_video" playsinline muted></video>
-        <canvas id="output_canvas"></canvas>
+        <button id="gesture-sheng" data-char="生" class="control-button">手势一: 生 (S)</button>
+        <button id="gesture-ri" data-char="日" class="control-button">手势二: 日 (R)</button>
+        <button id="gesture-kuai" data-char="快" class="control-button">手势三: 快 (K)</button>
+        <button id="gesture-le" data-char="乐" class="control-button">手势四: 乐 (L)</button>
     </div>
 
     <script>
-        // --- 颜色配置 ---
-        const TEXT_COLOR_MAP = {
-            '陆': { r: 0.2, g: 0.5, b: 1.0, hex: 0x4169e1, glow: '#4169e1' }, // RoyalBlue
-            '知': { r: 1.0, g: 0.2, b: 1.0, hex: 0xff00ff, glow: '#ff00ff' }, // Magenta
-            '舟': { r: 1.0, g: 0.2, b: 0.0, hex: 0xff4500, glow: '#ff4500' }, // OrangeRed
-            '快乐': { r: 1.0, g: 0.8, b: 0.1, hex: 0xffd700, glow: '#ffd700' }, // Gold
-            'Wait': { r: 0.1, g: 0.9, b: 0.9, hex: 0x00ffff, glow: '#00ffff' } // 默认/等待颜色
-        };
+        // 全局变量
+        let scene, camera, renderer, particles;
+        let particleCount = 50000;
+        let positions = new Float32Array(particleCount * 3);
+        let targets = new Float32Array(particleCount * 3);
+        let delays = new Float32Array(particleCount);
+        let velocity = new Float32Array(particleCount * 3);
+        let clock = new THREE.Clock();
+        let targetData = {}; // 存储所有文字的目标坐标
         
-        // --- DOM 元素 ---
-        const videoElement = document.getElementById('input_video');
-        const canvasElement = document.getElementById('output_canvas');
-        const canvasCtx = canvasElement.getContext('2d');
-        const loadingElement = document.getElementById('loading');
-        const modeDisplayElement = document.getElementById('current-mode');
+        // 摄像头和 MediaPipe 相关
+        let videoElement;
+        let pose;
+        let cameraUtil;
+        let lastGestureTime = 0;
+        const GESTURE_COOLDOWN = 1000; // 1秒冷却时间防止重复触发
 
-        // --- Three.js 变量 ---
-        let scene, camera, renderer;
-        let textPoints = null;
-        let hands;
-        const PARTICLE_SCALE_FACTOR = 0.05; // 粒子在屏幕上的缩放因子
+        const CHARACTERS = ["生", "日", "快", "生日快乐"];
+        const INITIAL_TEXT = "三维粒子系统"; // 初始状态显示的文字
+        const CHAR_MAP = {
+            '生': '生',
+            '日': '日',
+            '快': '快',
+            '乐': '生日快乐'
+        };
 
-        // --- 文本采样 Canvas ---
-        const samplerCanvas = document.getElementById('text-sampler');
-        const samplerCtx = samplerCanvas.getContext('2d');
-        const SAMPLER_SIZE = 512;
-        const PIXEL_STEP = 10; // 每隔 10 个像素点采样一个粒子，提高性能
+        const canvasWidth = 512;
+        const canvasHeight = 128; 
 
-        // -----------------------------------------------------------
-        // 1. Three.js 初始化
-        // -----------------------------------------------------------
-        function initThreeJS() {
-            const threeCanvas = document.getElementById('three-canvas');
+        // 姿势识别点的索引 (MediaPipe Pose)
+        // 11: Left Shoulder, 12: Right Shoulder
+        // 15: Left Wrist, 16: Right Wrist
+        const LEFT_WRIST = 15;
+        const RIGHT_WRIST = 16;
+        const LEFT_SHOULDER = 11;
+        const RIGHT_SHOULDER = 12;
 
-            // 场景
+        // --- 核心函数: 初始化和粒子动画 ---
+
+        function init() {
+            const container = document.getElementById('container');
+
+            // 1. Scene setup
             scene = new THREE.Scene();
-            scene.fog = new THREE.Fog(0x000000, 100, 500);
+            scene.background = new THREE.Color(0x0d0c1d); // 深色背景
 
-            // 摄像头
-            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.z = 100;
+            // 2. Camera setup
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 5000);
+            camera.position.z = 1000;
+            camera.lookAt(0, 0, 0);
 
-            // 渲染器
-            renderer = new THREE.WebGLRenderer({ canvas: threeCanvas, antialias: true });
+            // 3. Renderer setup
+            renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setPixelRatio(window.devicePixelRatio);
+            container.appendChild(renderer.domElement);
+
+            // 4. Generate Target Positions
+            generateTextPointCloud(); // 已修复的函数调用
+
+            // 5. Particle Geometry and Material (略，与之前版本相同)
+            const geometry = new THREE.BufferGeometry();
+            const colors = new Float32Array(particleCount * 3);
+            const sizes = new Float32Array(particleCount);
+
+            for (let i = 0; i < particleCount; i++) {
+                positions[i * 3 + 0] = (Math.random() - 0.5) * 2000;
+                positions[i * 3 + 1] = (Math.random() - 0.5) * 2000;
+                positions[i * 3 + 2] = (Math.random() - 0.5) * 2000;
+
+                targets[i * 3 + 0] = positions[i * 3 + 0];
+                targets[i * 3 + 1] = positions[i * 3 + 1];
+                targets[i * 3 + 2] = positions[i * 3 + 2];
+
+                colors[i * 3 + 0] = 0.5 + Math.random() * 0.5;
+                colors[i * 3 + 1] = 0.5 + Math.random() * 0.5;
+                colors[i * 3 + 2] = 0.5 + Math.random() * 0.5;
+
+                sizes[i] = 10 + Math.random() * 5;
+            }
+
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
             
-            // 响应式设计
+            const material = new THREE.PointsMaterial({
+                size: 5, 
+                vertexColors: true,
+                blending: THREE.AdditiveBlending,
+                transparent: true,
+                sizeAttenuation: true 
+            });
+
+            particles = new THREE.Points(geometry, material);
+            scene.add(particles);
+
+            setParticleTarget(INITIAL_TEXT);
+            
+            // Add event listeners
             window.addEventListener('resize', onWindowResize, false);
+            setupControls();
             
-            // 初始显示一个占位符
-            createTextParticles('请伸出手', TEXT_COLOR_MAP.Wait);
-            animate();
+            // 启动 MediaPipe 姿势识别
+            setupMediaPipe(); 
         }
 
+        // 6. Text Rasterization and Point Sampling (2D Canvas) (略，与之前版本相同)
+        function generateTextPointCloud() {
+            const canvas = document.createElement('canvas');
+            canvas.width = canvasWidth;
+            canvas.height = canvasHeight;
+            const ctx = canvas.getContext('2d');
+            
+            const texts = [...CHARACTERS, INITIAL_TEXT];
+
+            for (const text of texts) {
+                ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+                ctx.font = `bold ${text.length > 2 ? 80 : 120}px "Microsoft YaHei", sans-serif`;
+                ctx.fillStyle = '#FFFFFF';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                
+                const xOffset = canvasWidth / 2;
+                const yOffset = canvasHeight / 2;
+
+                ctx.fillText(text, xOffset, yOffset);
+
+                const imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
+                const data = imageData.data;
+                const points = [];
+
+                for (let y = 0; y < canvasHeight; y += 4) {
+                    for (let x = 0; x < canvasWidth; x += 4) {
+                        const index = (y * canvasWidth + x) * 4;
+                        if (data[index + 3] > 128) {
+                            const zDepth = (Math.random() - 0.5) * 50; 
+                            const scale = 5; 
+                            const x3D = (x - xOffset) * scale;
+                            const y3D = (y - yOffset) * scale;
+                            points.push({ x: x3D, y: -y3D, z: zDepth }); 
+                        }
+                    }
+                }
+                
+                targetData[text] = points;
+                // console.log(`Generated ${points.length} points for: ${text}`);
+            }
+        }
+
+        // 7. Set new targets for all particles (略，与之前版本相同)
+        function setParticleTarget(charKey) {
+            const points = targetData[charKey];
+            if (!points || points.length === 0) {
+                console.error(`No point data found for key: ${charKey}`);
+                return;
+            }
+
+            const shuffledPoints = [...points].sort(() => 0.5 - Math.random());
+            
+            for (let i = 0; i < particleCount; i++) {
+                const targetIndex = i % shuffledPoints.length;
+                const targetPoint = shuffledPoints[targetIndex];
+                const i3 = i * 3;
+
+                targets[i3 + 0] = targetPoint.x;
+                targets[i3 + 1] = targetPoint.y;
+                targets[i3 + 2] = targetPoint.z;
+
+                velocity[i3 + 0] = 0;
+                velocity[i3 + 1] = 0;
+                velocity[i3 + 2] = 0;
+                
+                delays[i] = Math.random() * 0.5;
+            }
+
+            document.getElementById('gesture-status').textContent = `手势状态：已触发 "${charKey}"`;
+            console.log(`Transitioning to: ${charKey}`);
+        }
+
+        // 8. Animation Loop (Main logic) (略，与之前版本相同)
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+            updateParticles(delta);
+            renderer.render(scene, camera);
+        }
+
+        function updateParticles(delta) {
+            const positions = particles.geometry.attributes.position.array;
+            const damping = 0.95; 
+            const stiffness = 0.005; 
+
+            let moved = false;
+            
+            for (let i = 0; i < particleCount; i++) {
+                const i3 = i * 3;
+                
+                const dx = targets[i3 + 0] - positions[i3 + 0];
+                const dy = targets[i3 + 1] - positions[i3 + 1];
+                const dz = targets[i3 + 2] - positions[i3 + 2];
+                
+                velocity[i3 + 0] += dx * stiffness;
+                velocity[i3 + 1] += dy * stiffness;
+                velocity[i3 + 2] += dz * stiffness;
+
+                velocity[i3 + 0] *= damping;
+                velocity[i3 + 1] *= damping;
+                velocity[i3 + 2] *= damping;
+                
+                positions[i3 + 0] += velocity[i3 + 0];
+                positions[i3 + 1] += velocity[i3 + 1];
+                positions[i3 + 2] += velocity[i3 + 2];
+                
+                if (Math.abs(dx) > 0.01 || Math.abs(dy) > 0.01 || Math.abs(dz) > 0.01) {
+                    moved = true;
+                }
+            }
+            
+            if (moved) {
+                particles.geometry.attributes.position.needsUpdate = true;
+            }
+
+            particles.rotation.y += 0.0005;
+            particles.rotation.x += 0.0003;
+        }
+
+        // 9. Event Handlers (略，与之前版本相同)
         function onWindowResize() {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
         }
 
-        function animate() {
-            requestAnimationFrame(animate);
-
-            // 粒子云的简单动画：自转
-            if (textPoints) {
-                textPoints.rotation.y += 0.005;
-                textPoints.rotation.x = Math.sin(Date.now() * 0.0001) * 0.1;
-            }
-
-            renderer.render(scene, camera);
+        function handleGesture(charKey) {
+            setParticleTarget(charKey);
         }
-        
-        /**
-         * 动态生成粒子几何体
-         * @param {string} text 要渲染的文字
-         * @param {object} colorConfig 颜色配置 {hex: 0xRRGGBB, glow: #RRGGBB}
-         */
-        function createParticlesFromText(text, colorConfig) {
-            // 1. 清理旧粒子
-            if (textPoints) {
-                scene.remove(textPoints);
-                textPoints.geometry.dispose();
-                textPoints.material.dispose();
-                textPoints = null;
-            }
+
+        function setupControls() {
+            document.getElementById('gesture-sheng').addEventListener('click', () => handleGesture(CHAR_MAP['生']));
+            document.getElementById('gesture-ri').addEventListener('click', () => handleGesture(CHAR_MAP['日']));
+            document.getElementById('gesture-kuai').addEventListener('click', () => handleGesture(CHAR_MAP['快']));
+            document.getElementById('gesture-le').addEventListener('click', () => handleGesture(CHAR_MAP['乐']));
             
-            if (!text) return; // 没有文字时直接返回
-
-            // 2. 在 2D Canvas 上绘制文字
-            samplerCtx.clearRect(0, 0, SAMPLER_SIZE, SAMPLER_SIZE);
-            samplerCtx.font = "900 300px Inter, sans-serif";
-            samplerCtx.fillStyle = '#FFFFFF'; // 使用白色绘制以便采样
-            samplerCtx.textAlign = 'center';
-            samplerCtx.textBaseline = 'middle';
-            samplerCtx.fillText(text, SAMPLER_SIZE / 2, SAMPLER_SIZE / 2);
-
-            // 3. 获取像素数据
-            const imageData = samplerCtx.getImageData(0, 0, SAMPLER_SIZE, SAMPLER_SIZE).data;
-            const positions = [];
-
-            // 4. 采样像素点生成 3D 坐标
-            for (let x = 0; x < SAMPLER_SIZE; x += PIXEL_STEP) {
-                for (let y = 0; y < SAMPLER_SIZE; y += PIXEL_STEP) {
-                    const i = (y * SAMPLER_SIZE + x) * 4;
-                    // 检查像素点的红色通道 (R) 是否大于 128 (足够亮，即文字区域)
-                    if (imageData[i] > 128) {
-                        // 将 2D 坐标映射到 3D 空间
-                        // 居中: (x - SAMPLER_SIZE/2) / scale, (SAMPLER_SIZE/2 - y) / scale
-                        const x3D = (x - SAMPLER_SIZE / 2) * PARTICLE_SCALE_FACTOR;
-                        const y3D = (SAMPLER_SIZE / 2 - y) * PARTICLE_SCALE_FACTOR;
-                        // 随机添加Z轴深度，增强 3D 粒子感
-                        const z3D = (Math.random() - 0.5) * 5; 
-
-                        positions.push(x3D, y3D, z3D);
-                    }
+            document.addEventListener('keydown', (event) => {
+                const key = event.key.toUpperCase();
+                switch(key) {
+                    case 'S': 
+                        handleGesture(CHAR_MAP['生']);
+                        break;
+                    case 'R': 
+                        handleGesture(CHAR_MAP['日']);
+                        break;
+                    case 'K': 
+                        handleGesture(CHAR_MAP['快']);
+                        break;
+                    case 'L': 
+                        handleGesture(CHAR_MAP['乐']);
+                        break;
                 }
-            }
-
-            // 5. 创建几何体和材质
-            const geometry = new THREE.BufferGeometry();
-            geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-            
-            // 使用发光材质和自定义着色器属性
-            const material = new THREE.PointsMaterial({
-                color: colorConfig.hex,
-                size: 2.5, // 粒子大小
-                sizeAttenuation: true, // 粒子随距离衰减
-                transparent: true,
-                opacity: 0.9,
-                blending: THREE.AdditiveBlending, // 叠加混合，实现辉光效果
-                depthWrite: false // 不写入深度，防止奇怪的渲染伪影
             });
-
-            textPoints = new THREE.Points(geometry, material);
-            scene.add(textPoints);
         }
 
-        // -----------------------------------------------------------
-        // 2. MediaPipe Hands 初始化与核心逻辑
-        // -----------------------------------------------------------
-        function initMediaPipe() {
-            hands = new Hands({locateFile: (file) => {
-                return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+        // --- MediaPipe 摄像头和姿势识别集成 ---
+
+        function setupMediaPipe() {
+            videoElement = document.getElementById('videoElement');
+            const loadingMessage = document.getElementById('loadingMessage');
+            const gestureStatus = document.getElementById('gesture-status');
+
+            pose = new Pose({locateFile: (file) => {
+                return `https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469406/${file}`;
             }});
 
-            hands.setOptions({
-                maxNumHands: 1,
-                modelComplexity: 1, 
-                minDetectionConfidence: 0.7, 
-                minTrackingConfidence: 0.7
+            pose.setOptions({
+                modelComplexity: 1, // 0 (light) or 1 (full)
+                smoothLandmarks: true,
+                minDetectionConfidence: 0.5,
+                minTrackingConfidence: 0.5
             });
 
-            hands.onResults(onResults);
+            pose.onResults(onResults);
             
-            setupCamera().then(() => {
-                loadingElement.style.display = 'none';
-                modeDisplayElement.innerText = "✅ 摄像头已就绪，请伸出手掌";
-                modeDisplayElement.style.color = "#00FF00";
-                sendToMediaPipe(); 
+            // 启动摄像头
+            cameraUtil = new Camera(videoElement, {
+                onFrame: async () => {
+                    // 每帧将视频帧发送给 MediaPipe Pose 进行处理
+                    await pose.send({image: videoElement});
+                },
+                width: 640,
+                height: 480
+            });
+            cameraUtil.start().then(() => {
+                loadingMessage.style.display = 'none';
+                gestureStatus.textContent = '手势状态：模型加载完成，开始识别...';
             }).catch(error => {
-                const errorMessage = `❌ 摄像头启动失败 (${error.name || '未知错误'})。`;
-                loadingElement.innerHTML = `<span style="color: #FF4500; font-size: 1.8rem;">${errorMessage}</span>
-                    <ul style="list-style: none; padding: 15px; margin-top: 15px; text-align: left; background: rgba(255, 69, 0, 0.1); border-radius: 8px;">
-                        <li>1. 请检查您的浏览器是否**允许了摄像头权限**。</li>
-                        <li>2. 摄像头是否被**其他程序**占用。</li>
-                        <li>3. 尝试**刷新页面**再试一次。</li>
-                    </ul>`;
-                loadingElement.style.display = 'block';
-                modeDisplayElement.innerText = "❌ 摄像头故障";
-                modeDisplayElement.style.color = "#FF4500";
-                console.error("Camera setup failed:", error);
-            });
-        }
-        
-        async function setupCamera() {
-            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                return Promise.reject(new Error("浏览器不支持摄像头访问。"));
-            }
-
-            const stream = await navigator.mediaDevices.getUserMedia({
-                'video': { facingMode: 'user' },
-            });
-            videoElement.srcObject = stream;
-            
-            // 使用 loadeddata 事件和 readyState 检查来更可靠地确保视频已加载并播放
-            return new Promise((resolve) => {
-                const handleVideoReady = () => {
-                    videoElement.play();
-                    canvasElement.width = videoElement.videoWidth;
-                    canvasElement.height = videoElement.videoHeight;
-                    // 使用 once: true 确保事件只触发一次
-                    videoElement.removeEventListener('loadeddata', handleVideoReady); 
-                    resolve();
-                };
-
-                // 监听 loadeddata 事件
-                videoElement.addEventListener('loadeddata', handleVideoReady);
-
-                // 如果视频数据已经加载完毕，则立即执行
-                if (videoElement.readyState >= 2) { 
-                    handleVideoReady();
-                }
+                console.error("无法启动摄像头:", error);
+                loadingMessage.textContent = '摄像头启动失败，请检查权限。';
             });
         }
 
-        async function sendToMediaPipe() {
-            if (videoElement.paused || videoElement.ended) return;
-            if (videoElement.readyState >= 2) {
-                await hands.send({image: videoElement}); 
-            }
-            requestAnimationFrame(sendToMediaPipe);
-        }
+        let currentGesture = null;
 
         function onResults(results) {
-            canvasCtx.save();
-            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            if (!results.poseLandmarks) {
+                currentGesture = null;
+                document.getElementById('gesture-status').textContent = '手势状态：未检测到人体';
+                return;
+            }
+
+            const landmarks = results.poseLandmarks;
             
-            let fingerCount = 0;
+            // 简化判断，使用归一化坐标 (0-1)
+            const rightWrist = landmarks[RIGHT_WRIST];
+            const leftWrist = landmarks[LEFT_WRIST];
+            const rightShoulder = landmarks[RIGHT_SHOULDER];
+            const leftShoulder = landmarks[LEFT_SHOULDER];
 
-            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-                const landmarks = results.multiHandLandmarks[0];
-                
-                // 绘制骨骼到预览 Canvas 上
-                drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: 'rgba(0, 255, 255, 0.7)', lineWidth: 2});
-                drawLandmarks(canvasCtx, landmarks, {color: '#FF00FF', lineWidth: 1});
+            // 姿势阈值（y轴坐标越小，位置越高）
+            const RAISE_THRESHOLD = 0.15; // 手腕比肩膀高 0.15 单位
+            const CLAP_THRESHOLD = 0.08; // 两个手腕x坐标距离小于 0.08 单位
 
-                fingerCount = countFingers(landmarks);
-                updateStateByFingerCount(fingerCount);
+            // 1. 生 (S): 抬起左手
+            const isLeftHandRaised = leftWrist.visibility > 0.8 && (leftShoulder.y - leftWrist.y > RAISE_THRESHOLD);
+            
+            // 2. 日 (R): 抬起右手
+            const isRightHandRaised = rightWrist.visibility > 0.8 && (rightShoulder.y - rightWrist.y > RAISE_THRESHOLD);
+
+            // 3. 快 (K): 双手高举 (比各自肩膀高)
+            const isBothHandsRaised = isLeftHandRaised && isRightHandRaised;
+
+            // 4. 乐 (L): 鼓掌 (双手靠近)
+            const isClapping = leftWrist.visibility > 0.8 && rightWrist.visibility > 0.8 && (Math.abs(leftWrist.x - rightWrist.x) < CLAP_THRESHOLD);
+            
+            let newGesture = null;
+            let statusText = '等待动作...';
+
+            if (isBothHandsRaised) {
+                newGesture = '乐'; // "生日快乐"
+                statusText = '已识别：双手高举 → 🎂 生日快乐';
+            } else if (isClapping) {
+                newGesture = '快'; // 击掌
+                statusText = '已识别：双手合十 → 快';
+            } else if (isLeftHandRaised) {
+                newGesture = '生';
+                statusText = '已识别：抬起左手 → 生';
+            } else if (isRightHandRaised) {
+                newGesture = '日';
+                statusText = '已识别：抬起右手 → 日';
             } else {
-                updateStateByFingerCount(0); // 没有检测到手时
+                statusText = '未检测到特定手势。';
             }
-            canvasCtx.restore();
-        }
-        
-        /**
-         * 统计向上伸出的手指数量 
-         */
-        function countFingers(landmarks) {
-            let count = 0;
-            // 简单判定：指尖 y 坐标小于指节 y 坐标 (y 轴向下增大)
-            if (landmarks[8].y < landmarks[6].y) count++; // 食指
-            if (landmarks[12].y < landmarks[10].y) count++; // 中指
-            if (landmarks[16].y < landmarks[14].y) count++; // 无名指
-            if (landmarks[20].y < landmarks[18].y) count++; // 小指
             
-            // 额外检查：如果拇指尖 (4) 比手腕基部 (0) 更靠近顶部 (y 值更小)，算作伸出
-            if (landmarks[4].y < landmarks[0].y - (landmarks[0].y - landmarks[9].y) * 0.5) count++; // 拇指
+            document.getElementById('gesture-status').textContent = `手势状态：${statusText}`;
 
-            return count;
-        }
-
-        /**
-         * 根据手指数量切换 3D 粒子内容
-         */
-        function updateStateByFingerCount(count) {
-            let textContent = '';
-            let displayMode = '等待手势...';
-            let targetColor = TEXT_COLOR_MAP.Wait;
-
-            if (count === 1) {
-                textContent = '陆';
-                displayMode = "☝️ 陆之形";
-                targetColor = TEXT_COLOR_MAP.陆;
-            } 
-            else if (count === 2) {
-                textContent = '知';
-                displayMode = "✌️ 知之形";
-                targetColor = TEXT_COLOR_MAP.知;
-            } 
-            else if (count === 3) {
-                textContent = '舟';
-                displayMode = "🤟 舟之形";
-                targetColor = TEXT_COLOR_MAP.舟;
-            } 
-            else if (count >= 4) { // 张开手掌 (4指或5指)
-                textContent = '快乐';
-                displayMode = "🖐️ 快乐";
-                targetColor = TEXT_COLOR_MAP.快乐;
-            } 
-            else {
-                // count === 0
-                // 如果当前模式显示的是成功启动信息，则不覆盖
-                if (modeDisplayElement.innerText.includes("✅")) {
-                    displayMode = "✅ 摄像头已就绪，请伸出手掌";
-                }
-            }
-
-
-            // 1. 更新 UI 文本 (仅在非故障状态下更新)
-            if (!modeDisplayElement.innerText.includes("❌")) {
-                modeDisplayElement.innerText = displayMode;
-            }
-
-            // 2. 控制 3D 粒子文字显示
-            // 只有当文字内容变化时才重新生成粒子，避免卡顿
-            if (textContent && (!textPoints || textPoints.userData.text !== textContent)) {
-                createTextParticles(textContent, targetColor);
-                if (textPoints) {
-                    textPoints.userData.text = textContent; // 存储当前文字内容
-                }
-            } else if (!textContent && textPoints) {
-                // 握拳或无手势时，隐藏文字并清理
-                scene.remove(textPoints);
-                textPoints.geometry.dispose();
-                textPoints.material.dispose();
-                textPoints = null;
+            // 触发粒子过渡 (带冷却时间)
+            if (newGesture && newGesture !== currentGesture && (Date.now() - lastGestureTime > GESTURE_COOLDOWN)) {
+                currentGesture = newGesture;
+                lastGestureTime = Date.now();
+                handleGesture(CHAR_MAP[newGesture]);
+            } else if (!newGesture) {
+                currentGesture = null;
             }
         }
 
 
-        // 页面加载完成后，启动 MediaPipe 和 Three.js
+        // --- Start the application ---
         window.onload = function() {
-            initThreeJS();
-            initMediaPipe();
+            init();
+            animate();
         };
+
     </script>
 </body>
 </html>
