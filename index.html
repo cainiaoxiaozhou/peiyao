@@ -354,13 +354,24 @@
             });
             videoElement.srcObject = stream;
             
+            // 使用 loadeddata 事件和 readyState 检查来更可靠地确保视频已加载并播放
             return new Promise((resolve) => {
-                videoElement.onloadedmetadata = () => {
+                const handleVideoReady = () => {
                     videoElement.play();
                     canvasElement.width = videoElement.videoWidth;
                     canvasElement.height = videoElement.videoHeight;
+                    // 使用 once: true 确保事件只触发一次
+                    videoElement.removeEventListener('loadeddata', handleVideoReady); 
                     resolve();
                 };
+
+                // 监听 loadeddata 事件
+                videoElement.addEventListener('loadeddata', handleVideoReady);
+
+                // 如果视频数据已经加载完毕，则立即执行
+                if (videoElement.readyState >= 2) { 
+                    handleVideoReady();
+                }
             });
         }
 
