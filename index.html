@@ -3,13 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>3D 粒子形态变换手势控制 V8.0</title>
-    <!-- 引入 MediaPipe 库 -->
+    <title>2D 手势文字控制器 V1.0</title>
+    <!-- 引入 MediaPipe 库 (用于手势识别) -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
-    <!-- 引入 Three.js -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 
     <style>
         body {
@@ -18,39 +16,32 @@
             background-color: #000000;
             font-family: 'Inter', sans-serif;
             color: white;
+            /* 确保页面中央有足够的对比度来显示文字 */
         }
-        canvas {
-            display: block;
-        }
-        /* 确保 Three.js 渲染的 Canvas 填满整个屏幕并位于底层 */
-        body > canvas:not(#output_canvas) {
-            position: fixed;
-            top: 0;
-            left: 0;
-            z-index: 5; 
-            /* 粒子光晕效果增强 */
-            filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.5));
-        }
-        /* ---------------- 2D 辉光文字 BILLBOARD (新增) ---------------- */
+
+        /* ---------------- 2D 辉光文字 BILLBOARD (核心显示区域) ---------------- */
         #text-billboard {
             position: absolute;
             top: 50%;
             left: 50%;
-            transform: translate(-50%, -50%) scale(0.8);
-            font-size: 15vw; /* 巨大文字，保证冲击力 */
+            /* 缩小文字大小至 12vw */
+            font-size: 12vw; 
             font-weight: 900;
-            pointer-events: none;
-            opacity: 0; /* 初始隐藏 */
-            /* 酷炫过渡动画 */
-            transition: opacity 0.3s ease-in-out, transform 0.3s cubic-bezier(0.68, -0.55, 0.27, 1.55);
             line-height: 1;
             white-space: nowrap;
             text-align: center;
+            
+            /* 居中并动画 */
+            transform: translate(-50%, -50%) scale(0.8);
+            pointer-events: none;
+            opacity: 0; 
+            transition: opacity 0.3s ease-in-out, transform 0.3s cubic-bezier(0.68, -0.55, 0.27, 1.55);
         }
         .text-visible {
             opacity: 1 !important;
             transform: translate(-50%, -50%) scale(1);
         }
+
         /* ---------------- UI 元素 ---------------- */
         #ui-container {
             position: absolute;
@@ -72,10 +63,10 @@
             text-shadow: 0 0 5px rgba(0,255,255,0.5);
         }
         .mode-display {
-            font-size: 3.5rem; 
+            font-size: 1.5rem; /* 稍微缩小 */
             font-weight: bold;
             margin-top: 15px;
-            text-shadow: 0 0 12px rgba(255,255,255,0.9);
+            text-shadow: 0 0 8px rgba(255,255,255,0.9);
             transition: color 0.3s, text-shadow 0.3s;
         }
         .instruction-list {
@@ -87,6 +78,7 @@
             border-radius: 12px;
             border-left: 5px solid #00FFFF;
             box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
+            pointer-events: auto; /* 允许用户选择复制 */
         }
         .instruction-item {
             margin-bottom: 8px;
@@ -100,6 +92,7 @@
             width: 40px;
             font-size: 1.2rem;
         }
+
         /* ---------------- 摄像头预览窗口 ---------------- */
         #camera-container {
             position: absolute;
@@ -121,7 +114,7 @@
             object-fit: cover;
             display: block; 
             position: absolute;
-            opacity: 0.3; /* 提高透明度，让用户看到摄像头是否工作 */
+            opacity: 0.3; 
         }
         #output_canvas {
             width: 100%;
@@ -129,6 +122,7 @@
             display: block;
             position: relative;
         }
+
         /* 加载和调试状态 */
         #loading {
             position: absolute;
@@ -152,23 +146,24 @@
 <body>
 
     <div id="loading">
-        ⚡️ 正在启动极速辉光魔法引擎 V8.0... 
+        ⚡️ 正在启动 2D 文字手势控制器... 
         <br>
-        <small>（粒子加速中，请稍候...）</small>
+        <small>（初始化摄像头中...）</small>
     </div>
     
-    <!-- 新增：居中显示、带特效的 2D 文字 -->
-    <div id="text-billboard"></div>
+    <!-- 核心：居中显示、带特效的 2D 文字 -->
+    <div id="text-billboard">请伸出手</div>
 
     <div id="ui-container">
-        <h1>形态魔法力场 V8.0</h1>
+        <h1>手势文字魔法 V1.0</h1>
         <div id="current-mode" class="mode-display" style="color:#00FFFF;">初始化摄像头...</div>
         
         <div class="instruction-list">
-            <div class="instruction-item"><span class="key">☝️</span> 1指 · 陆之形 (深蓝)</div>
-            <div class="instruction-item"><span class="key">✌️</span> 2指 · 知之形 (魔紫)</div>
-            <div class="instruction-item"><span class="key">🤟</span> 3指 · 舟之形 (炙红)</div>
-            <div class="instruction-item"><span class="key">🖐️</span> 4+指 · 生日快乐! (耀金)</div>
+            <div class="instruction-item"><span class="key">☝️</span> 1指 -> 陆</div>
+            <div class="instruction-item"><span class="key">✌️</span> 2指 -> 知</div>
+            <div class="instruction-item"><span class="key">🤟</span> 3指 -> 舟</div>
+            <div class="instruction-item"><span class="key">🖐️</span> 4+指 -> 快乐</div>
+            <div class="instruction-item"><span class="key">握拳</span> -> 隐藏</div>
         </div>
     </div>
 
@@ -179,35 +174,16 @@
     </div>
 
     <script>
-        // --- 全局常量 ---
-        const PARTICLE_COUNT = 4000; 
-        const SHAPE_SCALE = 350;     
-        const LERP_SPEED = 0.3;      // 形态变换速度大幅提升 (V8.0 关键点)
-        const IDLE_ROTATION_SPEED = 0.002; 
+        // --- 颜色配置 ---
         const TEXT_COLOR_MAP = {
             '陆': { r: 0.1, g: 0.4, b: 0.9, hex: '#4169e1' }, // RoyalBlue
             '知': { r: 0.9, g: 0.1, b: 0.9, hex: '#ff00ff' }, // Magenta
             '舟': { r: 1.0, g: 0.0, b: 0.0, hex: '#ff4500' }, // OrangeRed
-            '生日快乐': { r: 1.0, g: 0.8, b: 0.1, hex: '#ffd700' }, // Gold
-            'Sphere': { r: 0.1, g: 0.9, b: 0.9, hex: '#0ff' }
+            '快乐': { r: 1.0, g: 0.8, b: 0.1, hex: '#ffd700' }, // Gold
+            'Wait': { r: 0.1, g: 0.9, b: 0.9, hex: '#0ff' } // 默认/等待颜色
         };
         
-        // --- Three.js 变量 ---
-        let scene, camera, renderer, particles;
-        let originalPositions = []; 
-        let currentTargetPoints = []; 
-        let currentShapeName = 'Sphere';
-        
-        // 旋转/动画控制
-        let targetRotationY = 0.0;
-        let finalRotationY = 0.0;
-        let time = 0;
-        
-        // 颜色目标 (RGB)
-        let currentColor = TEXT_COLOR_MAP.Sphere; 
-        let targetColor = TEXT_COLOR_MAP.Sphere;
-        
-        // DOM 元素
+        // --- DOM 元素 ---
         const videoElement = document.getElementById('input_video');
         const canvasElement = document.getElementById('output_canvas');
         const canvasCtx = canvasElement.getContext('2d');
@@ -217,236 +193,7 @@
         let hands;
 
         // -----------------------------------------------------------
-        // 1. 汉字形态点定义 (沿用 V7.0 笔画优化)
-        // -----------------------------------------------------------
-        
-        const ShapePaths = {
-            '陆': [
-                [[-100, 70], [-100, -50], [-80, -90], [-60, -80]], 
-                [[ -80, 50], [-50, 50]], 
-                [[0, 80], [40, 80]], 
-                [[20, 80], [20, 50]], 
-                [[ -20, 40], [ 60, 40]], 
-                [[20, 40], [20, -50]], 
-                [[ -40, -50], [ 80, -50]], 
-                [[20, -50], [-10, -80]], 
-                [[20, -50], [50, -80]] 
-            ],
-            '知': [
-                [[ -80, 70], [ 40, 70]], 
-                [[-20, 70], [-20, 20]], 
-                [[ -70, 20], [ 50, 20]], 
-                [[-50, -10], [10, -10]], 
-                [[60, 60], [100, 60], [100, 0], [60, 0], [60, 60]] 
-            ],
-            '舟': [
-                [[ -80, 70], [ 80, 70]], 
-                [[-100, 40], [-50, -90], [50, -90], [100, 40]], 
-                [[0, 70], [0, -50]], 
-                [[-50, 40], [50, 40]], 
-                [[-30, 0], [30, 0]] 
-            ],
-            '生日快乐': [
-                [[-190, 60], [-110, 60]], [[-150, 60], [-150, -60]], [[-170, -10], [-130, -10]], [[-190, -60], [-110, -60]],
-                [[-80, 60], [-20, 60], [-20, -60], [-80, -60], [-80, 60]], [[-80, 0], [-20, 0]],
-                [[20, 60], [80, 60]], [[50, 60], [50, -60]], [[10, -30], [90, -30]], [[50, -60], [20, 0]],
-                [[130, 60], [180, 60]], [[155, 60], [155, -20]], [[110, -20], [200, -20]], [[155, -20], [130, -60]], [[155, -20], [180, -60]]
-            ]
-        };
-
-        function generateShapePoints(shapeKey) {
-            const paths = ShapePaths[shapeKey];
-            if (!paths) return [];
-
-            let totalLength = 0;
-            const segmentLengths = [];
-            paths.forEach(path => {
-                let pathLength = 0;
-                for (let i = 0; i < path.length - 1; i++) {
-                    pathLength += Math.hypot(path[i+1][0] - path[i][0], path[i+1][1] - path[i][1]);
-                }
-                segmentLengths.push(pathLength);
-                totalLength += pathLength;
-            });
-
-            if (totalLength === 0) return [];
-
-            const targetPoints = [];
-            const desiredParticleLength = totalLength / PARTICLE_COUNT; 
-            
-            paths.forEach((path) => {
-                for (let i = 0; i < path.length - 1; i++) {
-                    const [x1, y1] = path[i];
-                    const [x2, y2] = path[i + 1];
-                    const segmentLength = Math.hypot(x2 - x1, y2 - y1);
-                    let numParticlesInSegment = Math.ceil(segmentLength / desiredParticleLength);
-                    
-                    for (let j = 0; j < numParticlesInSegment; j++) {
-                        if (targetPoints.length >= PARTICLE_COUNT) break;
-                        const t = j / numParticlesInSegment; 
-                        const x = x1 + (x2 - x1) * t;
-                        const y = y1 + (y2 - y1) * t; 
-                        const z = Math.random() * 60 - 30; 
-
-                        targetPoints.push({
-                            x: x * SHAPE_SCALE / 100, 
-                            y: y * SHAPE_SCALE / 100,
-                            z: z
-                        });
-                    }
-                }
-            });
-            
-            while (targetPoints.length < PARTICLE_COUNT) {
-                targetPoints.push(generateSpherePoint(600)); 
-            }
-
-            targetPoints.sort(() => Math.random() - 0.5);
-            return targetPoints.slice(0, PARTICLE_COUNT); 
-        }
-
-        function generateSpherePoint(radius) {
-            const r = radius + Math.random() * 100;
-            const theta = Math.random() * Math.PI * 2;
-            const phi = Math.acos(2 * Math.random() - 1);
-            
-            return {
-                x: r * Math.sin(phi) * Math.cos(theta),
-                y: r * Math.sin(phi) * Math.sin(theta),
-                z: r * Math.cos(phi)
-            };
-        }
-
-
-        // -----------------------------------------------------------
-        // 2. Three.js 初始化与核心动画
-        // -----------------------------------------------------------
-        function initThreeJS() {
-            scene = new THREE.Scene();
-            scene.fog = new THREE.FogExp2(0x00000a, 0.0008); 
-
-            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 3000);
-            camera.position.z = 1000;
-
-            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false }); 
-            renderer.setPixelRatio(window.devicePixelRatio);
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            document.body.appendChild(renderer.domElement);
-
-            const particleMaterial = new THREE.PointsMaterial({
-                color: 0xffffff,
-                size: 15, 
-                map: getSprite(),
-                blending: THREE.AdditiveBlending,
-                depthTest: false,
-                transparent: true,
-                opacity: 0.9,
-                vertexColors: true
-            });
-
-            const geometry = new THREE.BufferGeometry();
-            const positions = [];
-            const colors = [];
-            const colorObj = new THREE.Color();
-            
-            for (let i = 0; i < PARTICLE_COUNT; i++) {
-                const p = generateSpherePoint(600);
-                
-                positions.push(p.x, p.y, p.z);
-                originalPositions.push(p); 
-                
-                colorObj.setHSL(0.6, 0.8, 0.5); 
-                colors.push(colorObj.r, colorObj.g, colorObj.b);
-            }
-
-            geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-            geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-
-            particles = new THREE.Points(geometry, particleMaterial);
-            scene.add(particles);
-
-            window.addEventListener('resize', onWindowResize, false);
-            currentTargetPoints = originalPositions; // 默认目标是球体
-        }
-
-        function getSprite() {
-            const canvas = document.createElement('canvas');
-            canvas.width = 64;
-            canvas.height = 64;
-            const context = canvas.getContext('2d');
-            const gradient = context.createRadialGradient(32, 32, 0, 32, 32, 32);
-            gradient.addColorStop(0, 'rgba(255,255,255,1)');
-            gradient.addColorStop(0.4, 'rgba(240,240,255,0.4)'); 
-            gradient.addColorStop(0.7, 'rgba(240,240,255,0.1)');
-            gradient.addColorStop(1, 'rgba(0,0,0,0)');
-            context.fillStyle = gradient;
-            context.fillRect(0, 0, 64, 64);
-            const texture = new THREE.Texture(canvas);
-            texture.needsUpdate = true;
-            return texture;
-        }
-
-        function onWindowResize() {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        }
-        
-        // 辅助函数：将 RGB 对象转换为 CSS 颜色字符串
-        function rgbToCss(r, g, b) {
-            return `rgb(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)})`;
-        }
-        
-        // 核心动画循环
-        function animate() {
-            requestAnimationFrame(animate);
-            time += 0.01;
-
-            finalRotationY += (targetRotationY - finalRotationY) * 0.05;
-            particles.rotation.y = finalRotationY;
-            
-            // 颜色插值
-            currentColor.r += (targetColor.r - currentColor.r) * LERP_SPEED;
-            currentColor.g += (targetColor.g - currentColor.g) * LERP_SPEED;
-            currentColor.b += (targetColor.b - currentColor.b) * LERP_SPEED;
-            
-            // 计算当前颜色
-            const currentCssColor = rgbToCss(currentColor.r, currentColor.g, currentColor.b);
-            
-            // 更新 2D 文字的颜色
-            billboardElement.style.color = currentCssColor;
-
-            // 粒子形态插值
-            if (particles && currentTargetPoints.length === PARTICLE_COUNT) {
-                const positions = particles.geometry.attributes.position.array;
-                const colors = particles.geometry.attributes.color.array;
-
-                for (let i = 0; i < PARTICLE_COUNT; i++) {
-                    const idx = i * 3;
-                    const target = currentTargetPoints[i];
-                    
-                    // a. 位置插值 (Lerp) - 使用更快的 LERP_SPEED
-                    positions[idx] += (target.x - positions[idx]) * LERP_SPEED;
-                    positions[idx + 1] += (target.y - positions[idx + 1]) * LERP_SPEED;
-                    positions[idx + 2] += (target.z - positions[idx + 2]) * LERP_SPEED;
-
-                    // b. 颜色更新
-                    const brightnessVar = (Math.sin(time * 5 + i * 0.1) + 1) * 0.05; 
-                    colors[idx] = Math.min(1, currentColor.r + brightnessVar);
-                    colors[idx + 1] = Math.min(1, currentColor.g + brightnessVar);
-                    colors[idx + 2] = Math.min(1, currentColor.b + brightnessVar);
-                }
-
-                particles.geometry.attributes.position.needsUpdate = true;
-                particles.geometry.attributes.color.needsUpdate = true;
-            }
-
-            renderer.render(scene, camera);
-        }
-
-
-        // -----------------------------------------------------------
-        // 3. MediaPipe Hands 逻辑
+        // 1. MediaPipe Hands 初始化与核心逻辑
         // -----------------------------------------------------------
         function initMediaPipe() {
             hands = new Hands({locateFile: (file) => {
@@ -474,7 +221,7 @@
                 loadingElement.innerHTML = `<span style="color: #FF4500; font-size: 1.8rem;">${errorMessage}</span>
                     <ul style="list-style: none; padding: 15px; margin-top: 15px; text-align: left; background: rgba(255, 69, 0, 0.1); border-radius: 8px;">
                         <li>1. 请检查您的浏览器是否**允许了摄像头权限**。</li>
-                        <li>2. 摄像头是否被**其他程序**（如微信、QQ、会议软件）占用。</li>
+                        <li>2. 摄像头是否被**其他程序**占用。</li>
                         <li>3. 尝试**刷新页面**再试一次。</li>
                     </ul>`;
                 loadingElement.style.display = 'block';
@@ -497,6 +244,7 @@
             return new Promise((resolve) => {
                 videoElement.onloadedmetadata = () => {
                     videoElement.play();
+                    // 确保 canvas 尺寸匹配视频流
                     canvasElement.width = videoElement.videoWidth;
                     canvasElement.height = videoElement.videoHeight;
                     resolve();
@@ -521,14 +269,14 @@
             if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
                 const landmarks = results.multiHandLandmarks[0];
                 
-                // 绘制骨骼
+                // 绘制骨骼到预览 Canvas 上
                 drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: 'rgba(0, 255, 255, 0.7)', lineWidth: 2});
                 drawLandmarks(canvasCtx, landmarks, {color: '#FF00FF', lineWidth: 1});
 
                 fingerCount = countFingers(landmarks);
                 updateStateByFingerCount(fingerCount);
             } else {
-                updateStateByFingerCount(0);
+                updateStateByFingerCount(0); // 没有检测到手时
             }
             canvasCtx.restore();
         }
@@ -538,80 +286,68 @@
          */
         function countFingers(landmarks) {
             let count = 0;
-            // 简单判定：指尖 y 坐标小于关节 y 坐标 (y 向下增大)
+            // 简单判定：指尖 y 坐标小于指节 y 坐标 (y 轴向下增大)
             if (landmarks[8].y < landmarks[6].y) count++; // 食指
             if (landmarks[12].y < landmarks[10].y) count++; // 中指
             if (landmarks[16].y < landmarks[14].y) count++; // 无名指
             if (landmarks[20].y < landmarks[18].y) count++; // 小指
             
-            // 拇指判定逻辑保持简单，不单独计算，只依赖于其他四指
-            
+            // 额外检查：如果拇指尖 (4) 比手腕基部 (0) 更靠近顶部 (y 值更小)，算作伸出
+            if (landmarks[4].y < landmarks[0].y - (landmarks[0].y - landmarks[9].y) * 0.5) count++; // 拇指
+
             return count;
         }
 
         /**
-         * 根据手指数量切换粒子目标形态
+         * 根据手指数量切换 2D 文字内容
          */
         function updateStateByFingerCount(count) {
-            let shapeName = 'Sphere';
-            let display = "等待手势...";
             let textContent = '';
+            let displayMode = '等待手势...';
+            let targetColor = TEXT_COLOR_MAP.Wait;
 
             if (count === 1) {
-                shapeName = '陆';
-                display = "陆之形 · 聚能";
                 textContent = '陆';
+                displayMode = "☝️ 陆之形";
+                targetColor = TEXT_COLOR_MAP.陆;
             } 
             else if (count === 2) {
-                shapeName = '知';
-                display = "知之形 · 智慧";
                 textContent = '知';
+                displayMode = "✌️ 知之形";
+                targetColor = TEXT_COLOR_MAP.知;
             } 
             else if (count === 3) {
-                shapeName = '舟';
-                display = "舟之形 · 航行";
                 textContent = '舟';
+                displayMode = "🤟 舟之形";
+                targetColor = TEXT_COLOR_MAP.舟;
             } 
             else if (count >= 4) { // 张开手掌 (4指或5指)
-                shapeName = '生日快乐';
-                display = "🎉 生日快乐! 🎂";
-                textContent = '生日快乐';
+                textContent = '快乐';
+                displayMode = "🖐️ 快乐";
+                targetColor = TEXT_COLOR_MAP.快乐;
             } 
             else {
-                // 如果是 Sphere 状态，且摄像头启动成功，不覆盖成功信息
+                // count === 0
+                // 如果当前模式显示的是成功启动信息，则不覆盖
                 if (modeDisplayElement.innerText.includes("✅")) {
-                    display = "✅ 摄像头已就绪，请伸出手掌";
+                    displayMode = "✅ 摄像头已就绪，请伸出手掌";
                 }
             }
 
 
             // 1. 更新 UI 文本 (仅在非故障状态下更新)
             if (!modeDisplayElement.innerText.includes("❌")) {
-                modeDisplayElement.innerText = display;
+                modeDisplayElement.innerText = displayMode;
             }
 
-            // 2. 目标颜色和形态
-            targetColor = TEXT_COLOR_MAP[shapeName];
-            targetRotationY += IDLE_ROTATION_SPEED; 
-
-            if (shapeName !== currentShapeName) {
-                if (shapeName === 'Sphere') {
-                    currentTargetPoints = originalPositions;
-                } else {
-                    currentTargetPoints = generateShapePoints(shapeName);
-                }
-                currentShapeName = shapeName;
-            }
-
-            // 3. 控制 2D 辉光文字显示 (V8.0 核心)
+            // 2. 控制 2D 辉光文字显示
             if (textContent) {
-                // 设置 2D 文字内容和基础颜色
                 billboardElement.innerText = textContent;
                 billboardElement.classList.add('text-visible');
                 
-                // 设置辉光特效 (匹配目标颜色)
+                // 设置颜色和辉光特效 
                 const hex = targetColor.hex;
-                // 使用 multiple text-shadow 创建强烈辉光效果
+                billboardElement.style.color = hex;
                 billboardElement.style.textShadow = `
                     0 0 10px ${hex}, 
                     0 0 20px ${hex}88, 
@@ -619,16 +355,14 @@
                     0 0 80px ${hex}22`;
 
             } else {
-                // 恢复球体时隐藏文字
+                // 握拳或无手势时，隐藏文字
                 billboardElement.classList.remove('text-visible');
             }
         }
 
 
-        // 页面加载完成后，先启动 Three.js，再启动 MediaPipe
+        // 页面加载完成后，启动 MediaPipe
         window.onload = function() {
-            initThreeJS();
-            animate(); 
             initMediaPipe();
         };
     </script>
