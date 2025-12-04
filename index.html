@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>3D 粒子魔法手势控制</title>
     <!-- 引入 MediaPipe 样式和库 -->
+    <!-- 注意：Camera 类来自 @mediapipe/camera_utils -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
@@ -22,6 +23,14 @@
         }
         canvas {
             display: block;
+        }
+        /* --- 粒子 Canvas 修复 (V4.1 核心改动) --- */
+        /* 确保 Three.js 渲染的 Canvas 填满整个屏幕并位于底层 */
+        body > canvas:not(#output_canvas) {
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: 5; /* 确保它在 UI (z-index 10, 20) 之下，但可见 */
         }
         /* ---------------- UI 元素 ---------------- */
         #ui-container {
@@ -128,11 +137,11 @@
     <div id="loading">
         ✨ 正在启动魔法引擎... 
         <br>
-        <small>（摄像头启动中...）</small>
+        <small>（使用 MediaPipe Camera Utility 启动中...）</small>
     </div>
 
     <div id="ui-container">
-        <h1>粒子力场 V3.0</h1>
+        <h1>粒子力场 V4.1</h1>
         <div id="current-mode" class="mode-display">等待手势...</div>
         
         <div class="instruction-list">
@@ -147,7 +156,7 @@
     <div id="camera-container">
         <!-- 视频元素：保留移动端兼容性配置 -->
         <video id="input_video" playsinline muted></video>
-        <!-- Canvas 元素用于绘制手势检测结果 -->
+        <!-- Canvas 元素用于绘制手势骨骼 -->
         <canvas id="output_canvas"></canvas>
     </div>
 
@@ -198,7 +207,9 @@
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 1, 3000);
             camera.position.z = 1000;
 
-            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+            // 关键：renderer 需要设置 alpha: true 才能透出背景色，但我们设置为 false 确保背景是黑的
+            // 为了防止 Three.js Canvas 被其他元素覆盖，我们主要依赖 CSS z-index 解决
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false }); 
             renderer.setPixelRatio(window.devicePixelRatio);
             renderer.setSize(window.innerWidth, window.innerHeight);
             document.body.appendChild(renderer.domElement);
@@ -404,7 +415,7 @@
         }
         
         // -----------------------------------------------------------
-        // MediaPipe Hands 逻辑 - 纯摄像头测试
+        // MediaPipe Hands 逻辑 - 使用 Camera 实用工具
         // -----------------------------------------------------------
         function initMediaPipe() {
             const videoElement = document.getElementById('input_video');
@@ -412,10 +423,11 @@
             const canvasCtx = canvasElement.getContext('2d');
             const loadingElement = document.getElementById('loading');
             
-            // 1. 初始化 Three.js
+            // 1. 初始化 Three.js 和动画
             initThreeJS();
+            animate(); // 启动 Three.js 动画
 
-            // 2. 初始化 MediaPipe
+            // 2. 初始化 MediaPipe Hands
             const hands = new Hands({locateFile: (file) => {
                 return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
             }});
@@ -429,62 +441,33 @@
 
             hands.onResults(onResults);
             
-            // 3. 摄像头启动逻辑 (沿用成功的移动端兼容方案)
-            async function setupCamera() {
-                try {
-                    // 获取视频流，设置理想的分辨率，使用前置摄像头
-                    const stream = await navigator.mediaDevices.getUserMedia({ 
-                        video: { 
-                            facingMode: "user", 
-                            width: { ideal: 640 },
-                            height: { ideal: 480 }
-                        } 
-                    });
-                    
-                    videoElement.srcObject = stream;
-
-                    // 视频元数据加载完成后
-                    videoElement.onloadedmetadata = () => {
-                        const videoWidth = videoElement.videoWidth;
-                        const videoHeight = videoElement.videoHeight;
-                        
-                        // 强制设置 Canvas 内部尺寸与视频流尺寸一致
-                        canvasElement.width = videoWidth;
-                        canvasElement.height = videoHeight;
-                        
-                        // 关键步骤：使用 play() Promise 确保视频流在移动端启动
-                        videoElement.play().then(() => {
-                            loadingElement.style.display = 'none';
-                            console.log("Camera stream started successfully.");
-                            // 启动 MediaPipe 的帧处理循环
-                            requestAnimationFrame(sendToMediaPipe);
-                        }).catch(e => {
-                            const errorMessage = `❌ 视频播放失败: ${e.message}。`;
-                            loadingElement.innerHTML = `<span class="error-message">${errorMessage}</span><br>请在 URL 栏手动点击播放按钮，或尝试在屏幕上点击一次。`;
-                            console.error("Video play failed:", e);
-                        });
-                    };
-
-                } catch (error) {
-                    const errorMessage = `❌ 摄像头启动失败 (${error.name})。`;
-                    loadingElement.innerHTML = `<span class="error-message">${errorMessage}</span><br>错误原因：${error.message || '未知错误'}。<br>请检查权限或是否被占用。`;
-                    console.error("Camera startup failed:", error);
-                }
-            }
-
-            // 4. 自定义帧处理循环
-            async function sendToMediaPipe() {
-                // 确保视频已经准备好渲染（readyState >= 2 表示有帧数据）
-                if (videoElement.readyState >= 2) {
+            // 3. 使用 MediaPipe Camera 启动摄像头和帧循环 
+            const camera = new Camera(videoElement, {
+                // 启动摄像头后，每一帧都会执行 onFrame
+                onFrame: async () => {
                     await hands.send({image: videoElement});
-                }
-                requestAnimationFrame(sendToMediaPipe);
-            }
-            
-            // 启动
-            setupCamera();
+                },
+                width: 640,
+                height: 480,
+                facingMode: 'user' // 使用前置摄像头
+            });
 
-            // 5. MediaPipe 结果处理
+            // 监听 Camera 启动完成事件
+            camera.getVideo().addEventListener('loadeddata', () => {
+                loadingElement.style.display = 'none';
+                console.log("Camera and Frame Loop started successfully using MediaPipe Camera utility.");
+                // 强制设置 Canvas 内部尺寸与视频流尺寸一致
+                canvasElement.width = videoElement.videoWidth;
+                canvasElement.height = videoElement.videoHeight;
+            });
+
+            camera.start().catch(error => {
+                const errorMessage = `❌ 摄像头启动失败 (${error.name})。`;
+                loadingElement.innerHTML = `<span class="error-message">${errorMessage}</span><br>错误原因：${error.message || '未知错误'}。<br>请检查权限或是否被占用。`;
+                console.error("Camera startup failed:", error);
+            });
+            
+            // 4. MediaPipe 结果处理 
             function onResults(results) {
                 // 绘制骨骼到预览 Canvas
                 canvasCtx.save();
