@@ -26,14 +26,14 @@
   .sub { font-size: 13px; opacity: .85; margin-top: 6px; }
 
   /* 统计卡 */
-  .stats { display: flex; gap: 6px; margin: 22px 0; }
+  .stats { display: flex; gap: 8px; margin: 22px 0; }
   .stat-card {
     flex: 1; background: rgba(255,255,255,.14); backdrop-filter: blur(6px);
     border: 1px solid rgba(255,255,255,.22); border-radius: 14px;
-    padding: 10px 2px; text-align: center;
+    padding: 12px 4px; text-align: center;
   }
-  .stat-num { font-size: 22px; font-weight: 800; color: #ffe259; }
-  .stat-label { font-size: 10px; opacity: .85; margin-top: 4px; white-space: nowrap; }
+  .stat-num { font-size: 24px; font-weight: 800; color: #ffe259; }
+  .stat-label { font-size: 11px; opacity: .85; margin-top: 4px; white-space: nowrap; }
 
   /* 抽奖区 */
   .lottery {
@@ -89,11 +89,20 @@
   }
   .win .store-name { animation: pop .45s ease; color: #ff512f; }
 
-  /* 店铺列表 */
-  h2 { font-size: 17px; margin: 28px 0 12px; display: flex; align-items: center; gap: 8px; }
+  /* 店铺列表（可折叠） */
+  details { margin-top: 24px; }
+  summary {
+    list-style: none; cursor: pointer; text-align: center;
+    background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.25);
+    border-radius: 999px; padding: 10px 0; font-size: 14px; font-weight: 600;
+  }
+  summary::-webkit-details-marker { display: none; }
+  summary::after { content: " ▾"; }
+  details[open] summary::after { content: " ▴"; }
+  h2 { font-size: 16px; margin: 20px 0 10px; display: flex; align-items: center; gap: 8px; }
   h2::before { content: ""; width: 4px; height: 16px; border-radius: 2px; background: #ffe259; }
   h2 small { font-size: 12px; opacity: .7; font-weight: normal; }
-  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .store {
     background: rgba(255,255,255,.13); border: 1px solid rgba(255,255,255,.2);
     border-radius: 14px; padding: 12px 14px;
@@ -112,23 +121,18 @@
   <header>
     <div class="mall-tag">江苏 · 盐城 · 响水</div>
     <h1>响水美食抽奖</h1>
-    <div class="sub">爱琴海 + 金街 + 县城 · 今天吃什么？让命运来决定 🍜</div>
+    <div class="sub">爱琴海 · 金街 · 县城 · 开发区 · 亚美附近<br>今天吃什么？让命运来决定 🍜</div>
   </header>
 
   <div class="stats">
     <div class="stat-card"><div class="stat-num" id="totalNum">0</div><div class="stat-label">美食店铺</div></div>
-    <div class="stat-card"><div class="stat-num" id="mallNum">0</div><div class="stat-label">爱琴海</div></div>
-    <div class="stat-card"><div class="stat-num" id="streetNum">0</div><div class="stat-label">金街</div></div>
-    <div class="stat-card"><div class="stat-num" id="cityNum">0</div><div class="stat-label">县城</div></div>
-    <div class="stat-card"><div class="stat-num" id="drawNum">0</div><div class="stat-label">已抽</div></div>
+    <div class="stat-card"><div class="stat-num" id="areaNum">0</div><div class="stat-label">覆盖区域</div></div>
+    <div class="stat-card"><div class="stat-num" id="drawNum">0</div><div class="stat-label">已抽次数</div></div>
   </div>
 
   <div class="lottery" id="lotteryBox">
-    <div class="tabs">
+    <div class="tabs" id="tabs">
       <button class="tab on" data-scope="all" onclick="setScope('all', this)">全部</button>
-      <button class="tab" data-scope="mall" onclick="setScope('mall', this)">爱琴海</button>
-      <button class="tab" data-scope="street" onclick="setScope('street', this)">金街</button>
-      <button class="tab" data-scope="city" onclick="setScope('city', this)">县城</button>
     </div>
     <div class="display">
       <div class="store-name" id="storeName">点击开始</div>
@@ -138,21 +142,26 @@
     <div class="tip">可切换抽奖范围，随机抽一家，抽中什么吃什么</div>
   </div>
 
-  <h2>爱琴海购物中心 <small>东海路29号 · 室内</small></h2>
-  <div class="grid" id="mallGrid"></div>
-
-  <h2>金街 <small>室外商业街 · 夜市小吃</small></h2>
-  <div class="grid" id="streetGrid"></div>
-
-  <h2>县城热门 <small>滨江路 · 华都不夜城 · 黄海路等</small></h2>
-  <div class="grid" id="cityGrid"></div>
+  <details>
+    <summary id="listSummary">查看全部店铺</summary>
+    <div id="sections"></div>
+  </details>
 
   <footer>
-    数据来源：爱琴海集团官网、响水县政府网、携程及公开地图信息<br>店铺信息以实际营业为准
+    数据来源：爱琴海集团官网、响水县政府网、携程、高德及公开地图信息<br>店铺信息以实际营业为准
   </footer>
 </div>
 
 <script>
+// 区域配置
+const LOCS = [
+  { key: "mall",   name: "爱琴海",   title: "爱琴海购物中心", desc: "东海路29号" },
+  { key: "street", name: "金街",     title: "金街",           desc: "商业街 · 夜市小吃" },
+  { key: "city",   name: "县城",     title: "县城热门",       desc: "滨江路 · 双园路 · 华都不夜城等" },
+  { key: "dev",    name: "开发区",   title: "开发区",         desc: "开源路 · 和谐路等" },
+  { key: "yamei",  name: "亚美附近", title: "亚美国际附近",   desc: "幸福路 · 淮河路" },
+];
+
 // 响水美食店铺（公开信息整理）
 const stores = [
   // 爱琴海购物中心
@@ -160,9 +169,12 @@ const stores = [
   { name: "周大厨辣椒炒肉", cat: "中式正餐", loc: "mall" },
   { name: "小菜园", cat: "中式正餐", loc: "mall" },
   { name: "家有川菜", cat: "中式正餐", loc: "mall" },
+  { name: "醉清楼", cat: "中式正餐", loc: "mall" },
   { name: "蛙喔炭烧牛蛙", cat: "特色菜", loc: "mall" },
   { name: "半天妖烤鱼", cat: "烤鱼", loc: "mall" },
   { name: "大奇嘟嘟煲", cat: "煲类", loc: "mall" },
+  { name: "小城煲腊味煲仔饭", cat: "煲仔饭", loc: "mall" },
+  { name: "排骨先生", cat: "中式快餐", loc: "mall" },
   { name: "厚岛自助烤肉", cat: "自助烤肉", loc: "mall" },
   { name: "夏威夷海鲜自助", cat: "自助餐", loc: "mall" },
   { name: "肯德基·爱琴海店", cat: "西式快餐", loc: "mall" },
@@ -171,6 +183,8 @@ const stores = [
   { name: "霸王茶姬", cat: "茶饮", loc: "mall" },
   { name: "蜜雪冰城", cat: "茶饮", loc: "mall" },
   { name: "悸动烧仙草", cat: "甜品饮品", loc: "mall" },
+  { name: "松枝诺甜品", cat: "甜品", loc: "mall" },
+  { name: "意式手工冰淇淋", cat: "冰淇淋", loc: "mall" },
   // 金街
   { name: "深海烤鱼", cat: "烤鱼", loc: "street" },
   { name: "芝根芝底披萨", cat: "披萨", loc: "street" },
@@ -197,32 +211,76 @@ const stores = [
   { name: "百汇餐车烧烤", cat: "烧烤", loc: "city" },
   { name: "肉夹馍餐车", cat: "小吃", loc: "city" },
   { name: "卷煎饼餐车", cat: "小吃", loc: "city" },
+  { name: "阿妈早茶", cat: "早茶", loc: "city" },
+  { name: "李氏烧烤龙虾", cat: "烧烤龙虾", loc: "city" },
+  { name: "锦州御烧烤", cat: "烧烤", loc: "city" },
+  { name: "鱼鼎记·双园路店", cat: "鱼火锅", loc: "city" },
+  { name: "重庆天方老鸭汤", cat: "汤锅", loc: "city" },
+  { name: "兰州牛肉拉面·双园路", cat: "面馆", loc: "city" },
+  { name: "开心一刻饭店", cat: "家常菜", loc: "city" },
+  { name: "姐妹饭店", cat: "家常菜", loc: "city" },
+  { name: "东台鱼汤面私房菜", cat: "面食私房菜", loc: "city" },
+  { name: "舒心酒家", cat: "家常菜", loc: "city" },
+  // 开发区
+  { name: "江南面馆·和欣公馆", cat: "面馆快餐", loc: "dev" },
+  { name: "品香源餐厅", cat: "中式正餐", loc: "dev" },
+  { name: "百香源黄焖鸡", cat: "黄焖鸡", loc: "dev" },
+  { name: "沙县小吃·新客站店", cat: "小吃", loc: "dev" },
+  { name: "肖记牛肉面馆", cat: "面馆", loc: "dev" },
+  { name: "得鑫酒楼", cat: "正餐酒楼", loc: "dev" },
+  { name: "食之味鸭血粉丝", cat: "粉丝汤", loc: "dev" },
+  // 亚美附近
+  { name: "如意馄饨·亚美店", cat: "馄饨", loc: "yamei" },
+  { name: "京味源时尚餐厅", cat: "中餐", loc: "yamei" },
+  { name: "华莱士·幸福店", cat: "西式快餐", loc: "yamei" },
+  { name: "扇贝王海鲜烧烤", cat: "海鲜烧烤", loc: "yamei" },
+  { name: "喜茶·润生广场店", cat: "茶饮", loc: "yamei" },
+  { name: "塔斯汀中国汉堡", cat: "西式快餐", loc: "yamei" },
+  { name: "哆米饭团寿司", cat: "寿司", loc: "yamei" },
+  { name: "翡翠明珠美食馆", cat: "中式正餐", loc: "yamei" },
+  { name: "创想酸菜鱼", cat: "川菜", loc: "yamei" },
+  { name: "今晚打老虎", cat: "牛蛙", loc: "yamei" },
 ];
 
-const LOC_NAME = { mall: "爱琴海", street: "金街", city: "县城" };
+const LOC_MAP = Object.fromEntries(LOCS.map(l => [l.key, l]));
 let drawCount = 0, drawing = false, scope = "all";
 
-// 初始化统计
-const mallStores = stores.filter(s => s.loc === "mall");
-const streetStores = stores.filter(s => s.loc === "street");
-const cityStores = stores.filter(s => s.loc === "city");
-document.getElementById("totalNum").textContent = stores.length;
-document.getElementById("mallNum").textContent = mallStores.length;
-document.getElementById("streetNum").textContent = streetStores.length;
-document.getElementById("cityNum").textContent = cityStores.length;
+// 按区域分组
+const byLoc = {};
+LOCS.forEach(l => byLoc[l.key] = stores.filter(s => s.loc === l.key));
 
-// 店铺列表
-function renderGrid(el, list) {
-  list.forEach(s => {
+// 初始化统计
+document.getElementById("totalNum").textContent = stores.length;
+document.getElementById("areaNum").textContent = LOCS.length;
+
+// 生成范围标签
+const tabsEl = document.getElementById("tabs");
+LOCS.forEach(l => {
+  const b = document.createElement("button");
+  b.className = "tab";
+  b.textContent = l.name;
+  b.onclick = () => setScope(l.key, b);
+  tabsEl.appendChild(b);
+});
+
+// 生成店铺分区块
+const secEl = document.getElementById("sections");
+LOCS.forEach(l => {
+  const sec = document.createElement("div");
+  sec.className = "loc-section";
+  sec.id = "sec-" + l.key;
+  sec.innerHTML = `<h2>${l.title} <small>${l.desc} · ${byLoc[l.key].length}家</small></h2>`;
+  const grid = document.createElement("div");
+  grid.className = "grid";
+  byLoc[l.key].forEach(s => {
     const d = document.createElement("div");
     d.className = "store";
     d.innerHTML = `<b>${s.name}</b><span>${s.cat}</span>`;
-    document.getElementById(el).appendChild(d);
+    grid.appendChild(d);
   });
-}
-renderGrid("mallGrid", mallStores);
-renderGrid("streetGrid", streetStores);
-renderGrid("cityGrid", cityStores);
+  sec.appendChild(grid);
+  secEl.appendChild(sec);
+});
 
 // 切换抽奖范围
 function setScope(s, btn) {
@@ -230,13 +288,16 @@ function setScope(s, btn) {
   scope = s;
   document.querySelectorAll(".tab").forEach(t => t.classList.remove("on"));
   btn.classList.add("on");
+  // 只展示所选区域的店铺列表
+  document.querySelectorAll(".loc-section").forEach(el => {
+    el.style.display = (s === "all" || el.id === "sec-" + s) ? "" : "none";
+  });
+  document.getElementById("listSummary").textContent =
+    s === "all" ? `查看全部 ${stores.length} 家店铺` : `查看${LOC_MAP[s].name}店铺（${byLoc[s].length}家）`;
 }
 
 function getPool() {
-  if (scope === "mall") return mallStores;
-  if (scope === "street") return streetStores;
-  if (scope === "city") return cityStores;
-  return stores;
+  return scope === "all" ? stores : byLoc[scope];
 }
 
 function startDraw() {
@@ -258,7 +319,7 @@ function startDraw() {
   (function roll() {
     const s = pool[i % pool.length];
     nameEl.textContent = s.name;
-    catEl.textContent = s.cat + " · " + LOC_NAME[s.loc];
+    catEl.textContent = s.cat + " · " + LOC_MAP[s.loc].name;
     i++;
     if (i < total) {
       // 末尾减速
@@ -268,7 +329,7 @@ function startDraw() {
       // 定格结果
       const win = pool[target];
       nameEl.textContent = win.name;
-      catEl.textContent = win.cat + " · " + LOC_NAME[win.loc];
+      catEl.textContent = win.cat + " · " + LOC_MAP[win.loc].name;
       box.classList.add("win");
       drawCount++;
       document.getElementById("drawNum").textContent = drawCount;
@@ -279,6 +340,9 @@ function startDraw() {
     }
   })();
 }
+
+// 初始化摘要文字
+document.getElementById("listSummary").textContent = `查看全部 ${stores.length} 家店铺`;
 
 // 彩带庆祝
 function launchConfetti() {
