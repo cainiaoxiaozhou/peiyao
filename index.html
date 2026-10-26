@@ -102,7 +102,7 @@ else if(state.screen=='bank')a.innerHTML=bankHTML();
 function homeHTML(){
 var sc=allQ.length;
 var doneN=new Set(done).size;
-return '<div class="hd"><h1>养老护理员初级</h1><div class="s">理论考试题库 · 共'+sc+'题</div></div>'+
+return '<div class="hd"><h1>养老护理员初级-裴瑶优化版</h1><div class="s">理论考试题库 · 共'+sc+'题</div></div>'+
 '<div class="wrap">'+
 '<div class="srow"><div class="st"><div class="n">'+sc+'</div><div class="l">总题量</div></div>'+
 '<div class="st"><div class="n">'+doneN+'</div><div class="l">已做</div></div>'+
@@ -156,6 +156,15 @@ return '<div class="hd"><h1>收藏题 ('+fq.length+')</h1></div><div class="wrap
 function goBank(){nav('bank');}
 var bsx=0,bsy=0,lastDir=1;
 function bend(e){var dx=e.clientX-bsx,dy=e.clientY-bsy;if(Math.abs(dx)>60&&Math.abs(dx)>Math.abs(dy)*1.5)bankPage(dx<0?1:-1);}
+// 刷题/考试页滑动翻题
+var qsx=0,qsy=0,lastQDir=0,lastEDir=0;
+function qdown(e){qsx=e.clientX;qsy=e.clientY;}
+function qup(e,kind){
+var dx=e.clientX-qsx,dy=e.clientY-qsy;
+if(Math.abs(dx)<=60||Math.abs(dx)<=Math.abs(dy)*1.5)return;
+if(kind=='quiz'){if(dx<0&&state.idx<state.order.length-1)nextQ();else if(dx>0&&state.idx>0)prevQ();}
+else{if(dx<0&&state.idx<state.order.length-1)enext();else if(dx>0&&state.idx>0)eprev();}
+}
 function bankHTML(){
 var letters=['A','B','C','D'];
 var list=state.bankPaper<0?allQ:PAPERS[state.bankPaper].questions;
@@ -193,6 +202,7 @@ var isFav=fav.indexOf(id)>=0;
 var pct=((state.idx+1)/state.order.length*100).toFixed(0);
 var h='<div class="hd"><h1>'+PAPERS[q.paper].name+'</h1><div class="s">第 '+(state.idx+1)+' / '+state.order.length+' 题</div></div>';
 h+='<div class="wrap"><div class="bkb" onclick="backHome()">← 返回</div><div class="prog"><div class="bar" style="width:'+pct+'%"></div></div>';
+h+='<div class="bsw'+(lastQDir<0?' inL':(lastQDir>0?' inR':''))+'" onpointerdown="qdown(event)" onpointerup="qup(event,\'quiz\')">';
 h+='<div class="card"><span class="qtype'+(q.t==1?' judge':'')+'">'+(q.t==0?'单选题':'判断题')+'</span>';
 h+='<div class="qnum">第'+q.n+'题</div><div class="qtext">'+q.q+'</div>';
 var letters=['A','B','C','D'];
@@ -200,10 +210,11 @@ q.opts.forEach(function(op,i){
 h+='<div class="opt" data-i="'+i+'" onclick="pick('+i+')"><div class="tg">'+letters[i]+'</div><div class="tx">'+op+'</div></div>';
 });
 h+='<div class="exp" id="exp"><span class="at">正确答案：'+q.ans+'</span>　'+q.opts[letters.indexOf(q.ans)]+'</div>';
-h+='</div>';
+h+='</div></div>';
 h+='<div class="fbar"><button class="fb fbp" onclick="prevQ()" '+(state.idx<=0?'disabled':'')+'>上一题</button>';
 h+='<button class="fb fbf'+(isFav?' on':'')+'" onclick="toggleFav()">'+(isFav?'★ 已藏':'☆ 收藏')+'</button>';
 h+='<button class="fb fbn" onclick="nextQ()">'+(state.idx>=state.order.length-1?'完成':'下一题')+'</button></div></div>';
+lastQDir=0;
 return h;
 }
 function pick(i){
@@ -226,10 +237,10 @@ var qi=state.order[state.idx];var q=allQ[qi];var id=qid(q);
 var i=fav.indexOf(id);if(i>=0)fav.splice(i,1);else fav.push(id);
 save();render();
 }
-function prevQ(){if(state.idx>0){state.idx--;state.answered=false;render();}}
+function prevQ(){if(state.idx>0){state.idx--;state.answered=false;lastQDir=-1;render();}}
 function nextQ(){
 if(state.idx>=state.order.length-1){backHome();return;}
-state.idx++;state.answered=false;render();
+state.idx++;state.answered=false;lastQDir=1;render();
 }
 function backHome(){if(hpos>0){history.back();}else{state.answered=false;state.screen='home';render();}}
 // 考试
@@ -249,6 +260,7 @@ var mm=String(Math.floor(el/60)).padStart(2,'0');var ss=String(el%60).padStart(2
 var pct=((state.idx+1)/state.order.length*100).toFixed(0);
 var h='<div class="hd"><h1>模拟考试</h1><div class="s">⏱ '+mm+':'+ss+'　已答 '+Object.keys(state.examAns).length+'/100</div></div>';
 h+='<div class="wrap"><div class="bkb" onclick="if(confirm(\'退出将放弃本次考试，确定？\'))backHome()">← 退出考试</div><div class="prog"><div class="bar" style="width:'+pct+'%"></div></div>';
+h+='<div class="bsw'+(lastEDir<0?' inL':(lastEDir>0?' inR':''))+'" onpointerdown="qdown(event)" onpointerup="qup(event,\'exam\')">';
 h+='<div class="card"><span class="qtype'+(q.t==1?' judge':'')+'">'+(q.t==0?'单选题':'判断题')+'</span>';
 h+='<div class="qnum">第'+(state.idx+1)+'题</div><div class="qtext">'+q.q+'</div>';
 var letters=['A','B','C','D'];
@@ -258,14 +270,15 @@ var cls='opt';
 if(sel!=null&&letters[i]==sel)cls+=' ok';
 h+='<div class="'+cls+'" onclick="epick('+i+')"><div class="tg">'+letters[i]+'</div><div class="tx">'+op+'</div></div>';
 });
-h+='</div>';
+h+='</div></div>';
 h+='<div class="fbar"><button class="fb fbp" onclick="eprev()" '+(state.idx<=0?'disabled':'')+'>上一题</button>';
 h+='<button class="fb fbp" onclick="nav(\'board\')">答题卡</button>';
 h+='<button class="fb fbn" onclick="enext()">'+(state.idx>=state.order.length-1?'交卷':'下一题')+'</button></div></div>';
+lastEDir=0;
 return h;
 }
 function epick(i){var letters=['A','B','C','D'];state.examAns[state.idx]=letters[i];render();}
-function eprev(){if(state.idx>0){state.idx--;render();}}
+function eprev(){if(state.idx>0){state.idx--;lastEDir=-1;render();}}
 function submitExam(){
 var un=state.order.length-Object.keys(state.examAns).length;
 if(un>0){if(!confirm('还有'+un+'题未答，确认交卷？'))return;}
@@ -276,7 +289,7 @@ state.screen='result';render();
 }
 function enext(){
 if(state.idx>=state.order.length-1){submitExam();return;}
-state.idx++;render();
+state.idx++;lastEDir=1;render();
 }
 function backExam(){if(hpos>0){history.back();}else{state.screen='exam';render();}}
 function boardHTML(){
